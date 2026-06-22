@@ -12,8 +12,10 @@ interface SubtitlesProps {
     startFrame: number;
     wordTimings: Word[];
     text: string;
+    speaker?: string;
     templateData?: {
       captionStyle?: 'dialogue' | 'fact' | 'minimal' | 'none';
+      storyState?: { speaker?: string };
     };
   };
   currentFrame: number;
@@ -26,36 +28,39 @@ export const Subtitles: React.FC<SubtitlesProps> = ({ activeScene, currentFrame 
 
   const captionStyle = activeScene.templateData?.captionStyle || 'dialogue';
 
-  // 0. Handle 'none' style (pure visual storytelling)
-  if (captionStyle === 'none') {
-    return null;
-  }
+  // Handle 'none' style
+  if (captionStyle === 'none') return null;
 
   const wordTimings = activeScene.wordTimings || [];
 
-  // Fallback: if no word-level timings exist, show the whole text with simple styles
+  // Determine speaker for colour theming
+  const speaker = activeScene.templateData?.storyState?.speaker || activeScene.speaker || '';
+  // Byte = cyan highlight, Bug = neon green highlight
+  const activeWordColor = speaker === 'Bug' ? '#39ff14' : '#ffd60a';
+  const activeGlow = speaker === 'Bug'
+    ? '0 0 20px rgba(57,255,20,0.8), 0 4px 8px rgba(0,0,0,0.9)'
+    : '0 0 20px rgba(255,214,10,0.8), 0 4px 8px rgba(0,0,0,0.9)';
+
+  // --- Fallback: no word timings ---
   if (wordTimings.length === 0) {
     const cleanText = activeScene.text.replace(/^(Byte|Bug):\s*/i, '');
-    const fallbackFontSize = fitCaptionFontSize(cleanText, 68, 40);
     return (
       <div
         style={{
           fontFamily: "'Outfit', sans-serif",
-          fontSize: fallbackFontSize,
+          fontSize: 64,
           fontWeight: 900,
           textTransform: 'uppercase',
           color: '#ffffff',
           textAlign: 'center',
-          textShadow: '0 4px 15px rgba(0,0,0,0.7)',
-          padding: '18px 30px',
-          lineHeight: 1.12,
-          letterSpacing: 0,
-          background: 'rgba(2, 6, 10, 0.62)',
-          border: '1px solid rgba(255,255,255,0.12)',
-          borderRadius: 8,
-          backdropFilter: 'blur(10px)',
+          // Pure text shadow — no background box
+          textShadow: '0 2px 12px rgba(0,0,0,1), 0 0 40px rgba(0,0,0,0.9), 3px 3px 0px rgba(0,0,0,0.8)',
+          lineHeight: 1.1,
+          letterSpacing: 1,
           overflowWrap: 'anywhere',
-          maxWidth: 980
+          maxWidth: 980,
+          padding: '0 24px',
+          WebkitTextStroke: '2px rgba(0,0,0,0.5)',
         }}
       >
         {cleanText}
@@ -63,11 +68,13 @@ export const Subtitles: React.FC<SubtitlesProps> = ({ activeScene, currentFrame 
     );
   }
 
-  // 1. Locate the index of the active word
+  // --- Find the SINGLE active word (one at a time) ---
+  // Find current word being spoken
   let activeIndex = wordTimings.findIndex(
     (wt) => currentTime >= wt.start && currentTime <= wt.end
   );
 
+  // If between words, show the last spoken word
   if (activeIndex === -1) {
     for (let i = wordTimings.length - 1; i >= 0; i--) {
       if (currentTime >= wordTimings[i].end) {
@@ -75,120 +82,67 @@ export const Subtitles: React.FC<SubtitlesProps> = ({ activeScene, currentFrame 
         break;
       }
     }
-    if (activeIndex === -1) {
-      activeIndex = 0;
-    }
   }
 
-  // 2. Chunk word timings to reduce text density (Alex Hormozi style dynamic chunking)
-  // Max size is 4 words for standard dialogue/facts, and 2 words for minimal action/emotional scenes.
-  const maxChunkSize = captionStyle === 'minimal' ? 2 : 4;
-  const chunks: Word[][] = [];
-  let currentChunk: Word[] = [];
-
-  for (const wt of wordTimings) {
-    currentChunk.push(wt);
-    const hasPunctuation = /[.,!?;]/.test(wt.word);
-    if (currentChunk.length >= maxChunkSize || hasPunctuation) {
-      chunks.push(currentChunk);
-      currentChunk = [];
-    }
-  }
-  if (currentChunk.length > 0) {
-    chunks.push(currentChunk);
+  // Before any word starts, show nothing
+  if (activeIndex === -1 && currentTime < wordTimings[0]?.start) {
+    return null;
   }
 
-  // Find the active chunk containing the active index
-  let activeChunkIdx = 0;
-  for (let i = 0; i < chunks.length; i++) {
-    const chunk = chunks[i];
-    const chunkStart = chunk[0].start;
-    if (currentTime >= chunkStart) {
-      activeChunkIdx = i;
-    }
-  }
-  const activeChunk = chunks[activeChunkIdx] || [];
+  if (activeIndex === -1) activeIndex = 0;
+
+  const activeWord = wordTimings[activeIndex];
+  if (!activeWord) return null;
+
+  // Spring bounce for the word pop
+  const wordStartFrame = Math.round(activeWord.start * fps);
+  const framesSinceWord = sceneRelativeFrame - wordStartFrame;
+  const springVal = spring({
+    frame: framesSinceWord < 0 ? 0 : framesSinceWord,
+    fps,
+    config: { damping: 8, stiffness: 260, mass: 0.1 }
+  });
+
+  const scale = interpolate(springVal, [0, 1], [0.5, 1.0], { extrapolateRight: 'clamp' });
+  const opacity = interpolate(springVal, [0, 0.3], [0, 1], { extrapolateRight: 'clamp' });
+
+  // Word importance: ALL-CAPS short words (tech terms) get bigger treatment
+  const isEmphasisWord = /^[A-Z]{2,}$/.test(activeWord.word) ||
+    activeWord.word.length >= 6;
+  const fontSize = captionStyle === 'minimal' ? 72 : isEmphasisWord ? 82 : 74;
 
   return (
     <div
       style={{
         display: 'flex',
-        flexWrap: 'wrap',
-        alignItems: 'center',
         justifyContent: 'center',
-        gap: '8px 20px',
-        maxWidth: 900,
+        alignItems: 'center',
         width: '100%',
-        fontFamily: "'Outfit', sans-serif",
-        textTransform: 'uppercase',
-        zIndex: 50,
-        padding: '16px 28px',
-        borderRadius: '16px',
-        background: 'rgba(2, 6, 10, 0.7)',
-        border: '1px solid rgba(255,255,255,0.08)',
-        boxShadow: '0 20px 50px rgba(0,0,0,0.5)',
-        backdropFilter: 'blur(10px)',
-        textAlign: 'center'
+        // No background container — pure floating text
       }}
     >
-      {activeChunk.map((wt, idx) => {
-        const isSpoken = currentTime >= wt.start;
-        const isWordActive = wt.start === wordTimings[activeIndex]?.start;
-
-        // Future words are invisible to create typewriter appearance without layout shifting
-        const opacity = isSpoken ? 1 : 0;
-        
-        // Active word animations
-        let scale = 1.0;
-        let color = '#ffffff';
-        let rotate = 0;
-        let textShadow = 'none';
-
-        if (isWordActive) {
-          // Spring bounce animation for the active word pop
-          const wordStartFrame = Math.round(wt.start * fps);
-          const activeFrame = sceneRelativeFrame - wordStartFrame;
-          const springVal = spring({
-            frame: activeFrame < 0 ? 0 : activeFrame,
-            fps,
-            config: { damping: 10, stiffness: 220, mass: 0.15 }
-          });
-          scale = interpolate(springVal, [0, 1], [0.85, 1.15]);
-          rotate = interpolate(springVal, [0, 1], [-3, 1]);
-          color = '#ffdf00'; // Neon yellow highlight
-          textShadow = '0 0 15px rgba(255, 223, 0, 0.5)';
-        }
-
-        return (
-          <span
-            key={idx}
-            style={{
-              color,
-              fontSize: '52px', // Larger readable font size for mobile
-              fontWeight: isWordActive ? 900 : 800,
-              opacity,
-              transform: `scale(${scale}) rotate(${rotate}deg)`,
-              textShadow,
-              transition: 'color 0.1s ease, transform 0.05s ease-out',
-              display: 'inline-block',
-              margin: '0 8px',
-              letterSpacing: '0.5px'
-            }}
-          >
-            {wt.word}
-          </span>
-        );
-      })}
+      <span
+        style={{
+          fontFamily: "'Outfit', sans-serif",
+          fontSize: `${fontSize}px`,
+          fontWeight: 900,
+          textTransform: 'uppercase',
+          letterSpacing: '1px',
+          color: activeWordColor,
+          // Thick black outline via text-shadow layers for legibility on any background
+          textShadow: activeGlow,
+          WebkitTextStroke: '3px rgba(0,0,0,0.85)',
+          transform: `scale(${scale})`,
+          opacity,
+          display: 'inline-block',
+          lineHeight: 1,
+          transformOrigin: 'center bottom',
+        }}
+      >
+        {activeWord.word}
+      </span>
     </div>
   );
 };
-
-function fitCaptionFontSize(value: string, max: number, min: number): number {
-  const length = String(value || '').length;
-  if (length <= 8) return max;
-  if (length <= 14) return Math.max(min, max - 10);
-  if (length <= 22) return Math.max(min, max - 20);
-  return min;
-}
 
 export default Subtitles;

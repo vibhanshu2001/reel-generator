@@ -8,6 +8,8 @@ import {
 interface Script {
   id: string;
   title: string;
+  youtubeTitle?: string | null;
+  youtubeDescription?: string | null;
   hook: string;
   body: string;
   cta: string;
@@ -55,6 +57,11 @@ export default function App() {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [topicInput, setTopicInput] = useState('');
+
+  // Topic suggestions
+  const [suggestedTopics, setSuggestedTopics] = useState<any[]>([]);
+  const [suggestLoading, setSuggestLoading] = useState(false);
+  const [suggestError, setSuggestError] = useState('');
   
   // Series and Story Universe states
   const [seriesList, setSeriesList] = useState<any[]>([]);
@@ -66,6 +73,8 @@ export default function App() {
   // Script editor states
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState('');
+  const [editYoutubeTitle, setEditYoutubeTitle] = useState('');
+  const [editYoutubeDescription, setEditYoutubeDescription] = useState('');
   const [editHook, setEditHook] = useState('');
   const [editBody, setEditBody] = useState('');
   const [editCta, setEditCta] = useState('');
@@ -107,6 +116,8 @@ export default function App() {
       // Populate edit states
       if (data.script) {
         setEditTitle(data.script.title);
+        setEditYoutubeTitle(data.script.youtubeTitle || data.script.title);
+        setEditYoutubeDescription(data.script.youtubeDescription || '');
         setEditHook(data.script.hook);
         setEditBody(data.script.body);
         setEditCta(data.script.cta);
@@ -162,6 +173,23 @@ export default function App() {
     }
   }, [selectedProjectId]);
 
+  // Fetch LLM topic suggestions
+  const handleSuggestTopics = async () => {
+    setSuggestLoading(true);
+    setSuggestError('');
+    setSuggestedTopics([]);
+    try {
+      const res = await fetch('/api/projects/suggest-topics');
+      if (!res.ok) throw new Error('Failed to fetch suggestions');
+      const data = await res.json();
+      setSuggestedTopics(data);
+    } catch (e: any) {
+      setSuggestError('Could not load suggestions. Check your API key.');
+    } finally {
+      setSuggestLoading(false);
+    }
+  };
+
   // Handle new project submission
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -181,6 +209,7 @@ export default function App() {
       setProjects(prev => [data, ...prev]);
       setSelectedProjectId(data.id);
       setTopicInput('');
+      setSuggestedTopics([]);
     } catch (e) {
       console.error('Failed to create project', e);
     } finally {
@@ -205,7 +234,8 @@ export default function App() {
             premise: `Byte and Bug explore ${newSeriesName}.`,
             characters: ['Byte', 'Bug'],
             rules: newUniverseRules.split('\n').map(r => r.trim()).filter(Boolean),
-            visualStyle: 'cartoon_cinematic',
+            visualStyle: 'technical_2d_comic_animation',
+            visualStyleDetails: 'Developer-focused technical comic aesthetic with architecture diagrams, terminal surfaces, APIs, queues, databases, servers, data packets, and clean comic motion.',
             continuityLevel: 'light'
           }
         })
@@ -233,6 +263,8 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: editTitle,
+          youtubeTitle: editYoutubeTitle,
+          youtubeDescription: editYoutubeDescription,
           hook: editHook,
           body: editBody,
           cta: editCta,
@@ -388,16 +420,155 @@ export default function App() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '32px' }}>
           {!showCreateSeries ? (
             <form onSubmit={handleCreateProject} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <h2 style={{ fontSize: '14px', fontWeight: 700, textTransform: 'uppercase', color: '#8b949e', letterSpacing: '0.5px' }}>New Short Topic</h2>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h2 style={{ fontSize: '14px', fontWeight: 700, textTransform: 'uppercase', color: '#8b949e', letterSpacing: '0.5px' }}>New Short Topic</h2>
+                <button
+                  type="button"
+                  onClick={handleSuggestTopics}
+                  disabled={suggestLoading || submitting}
+                  style={{
+                    background: suggestLoading
+                      ? 'rgba(255,255,255,0.05)'
+                      : 'linear-gradient(135deg, rgba(168,85,247,0.18) 0%, rgba(0,170,255,0.18) 100%)',
+                    border: '1px solid rgba(168,85,247,0.4)',
+                    borderRadius: '8px',
+                    color: suggestLoading ? '#8b949e' : '#c084fc',
+                    fontSize: '11px',
+                    fontWeight: 800,
+                    letterSpacing: '0.5px',
+                    cursor: suggestLoading ? 'default' : 'pointer',
+                    padding: '5px 10px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    transition: 'all 0.2s',
+                    textTransform: 'uppercase',
+                  }}
+                  onMouseEnter={e => { if (!suggestLoading) (e.currentTarget as HTMLButtonElement).style.borderColor = '#a855f7'; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(168,85,247,0.4)'; }}
+                >
+                  {suggestLoading
+                    ? <><Loader2 size={11} className="animate-spin" /> Thinking...</>
+                    : <>✨ Suggest Topics</>}
+                </button>
+              </div>
+
               <input
                 type="text"
                 className="glass-input"
-                placeholder="e.g. Kafka Explained, Event Loop"
+                placeholder="e.g. Why Kafka is NOT a queue..."
                 value={topicInput}
                 onChange={(e) => setTopicInput(e.target.value)}
                 disabled={submitting}
               />
-              
+
+              {/* Suggestion Shimmer while loading */}
+              {suggestLoading && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
+                  {[1,2,3].map(i => (
+                    <div key={i} style={{
+                      height: '62px',
+                      borderRadius: '10px',
+                      background: 'linear-gradient(90deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.07) 50%, rgba(255,255,255,0.03) 100%)',
+                      backgroundSize: '200% 100%',
+                      animation: 'shimmer 1.4s infinite',
+                      border: '1px solid rgba(255,255,255,0.05)',
+                    }} />
+                  ))}
+                </div>
+              )}
+
+              {/* Suggested Topic Cards */}
+              {!suggestLoading && suggestedTopics.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+                    <span style={{ fontSize: '10px', color: '#8b949e', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>AI Suggestions — click to use</span>
+                    <button
+                      type="button"
+                      onClick={handleSuggestTopics}
+                      style={{ background: 'none', border: 'none', color: '#c084fc', fontSize: '10px', fontWeight: 700, cursor: 'pointer', padding: 0 }}
+                    >↻ Refresh</button>
+                  </div>
+                  {suggestedTopics.map((t, i) => {
+                    const categoryColors: Record<string, string> = {
+                      'databases': '#f59e0b', 'networking': '#06b6d4', 'distributed-systems': '#8b5cf6',
+                      'cloud': '#38bdf8', 'ai-ml': '#a855f7', 'devops': '#10b981',
+                      'security': '#ef4444', 'web': '#f97316', 'os': '#64748b', 'algorithms': '#ec4899'
+                    };
+                    const patternEmoji: Record<string, string> = {
+                      'myth_busting': '💥', 'hidden_truth': '🔍', 'battle': '⚔️',
+                      'race': '🏁', 'countdown': '⏳', 'unexpected_twist': '🌀',
+                      'survival_story': '🆘', 'mystery_box': '📦'
+                    };
+                    const catColor = categoryColors[t.category] || '#8b949e';
+                    const emoji = patternEmoji[t.viralPattern] || '🎬';
+                    const isSelected = topicInput === t.topic;
+
+                    return (
+                      <div
+                        key={i}
+                        onClick={() => setTopicInput(t.topic)}
+                        style={{
+                          padding: '10px 12px',
+                          borderRadius: '10px',
+                          border: isSelected
+                            ? `1px solid ${catColor}`
+                            : '1px solid rgba(255,255,255,0.06)',
+                          background: isSelected
+                            ? `linear-gradient(135deg, ${catColor}18 0%, ${catColor}08 100%)`
+                            : 'rgba(255,255,255,0.02)',
+                          cursor: 'pointer',
+                          transition: 'all 0.18s',
+                          animation: `fadeSlideIn 0.3s ease ${i * 0.06}s both`,
+                          textAlign: 'left',
+                        }}
+                        onMouseEnter={e => {
+                          if (!isSelected) {
+                            (e.currentTarget as HTMLDivElement).style.background = `${catColor}10`;
+                            (e.currentTarget as HTMLDivElement).style.borderColor = `${catColor}60`;
+                          }
+                        }}
+                        onMouseLeave={e => {
+                          if (!isSelected) {
+                            (e.currentTarget as HTMLDivElement).style.background = 'rgba(255,255,255,0.02)';
+                            (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(255,255,255,0.06)';
+                          }
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                          <span style={{ fontSize: '13px', fontWeight: 700, color: '#fff', lineHeight: 1.3, flex: 1 }}>
+                            {t.topic}
+                          </span>
+                          <span style={{
+                            fontSize: '10px', fontWeight: 800, color: catColor,
+                            background: `${catColor}18`, border: `1px solid ${catColor}40`,
+                            padding: '2px 6px', borderRadius: '4px', flexShrink: 0,
+                            textTransform: 'uppercase', letterSpacing: '0.3px'
+                          }}>
+                            {t.category}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#8b949e', marginTop: '4px', fontStyle: 'italic', lineHeight: 1.4 }}>
+                          {emoji} "{t.hook}"
+                        </div>
+                        <div style={{ display: 'flex', gap: '6px', marginTop: '5px', alignItems: 'center' }}>
+                          <span style={{ fontSize: '10px', color: '#8b949e', background: 'rgba(255,255,255,0.04)', padding: '1px 5px', borderRadius: '3px', fontWeight: 700 }}>
+                            {t.viralPattern.replace(/_/g, ' ')}
+                          </span>
+                          <span style={{ fontSize: '10px', color: '#4ade80', fontWeight: 800 }}>
+                            🎯 {t.retentionScore}% retention
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {suggestError && (
+                <span style={{ fontSize: '11px', color: '#f87171', fontWeight: 600 }}>{suggestError}</span>
+              )}
+
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
                 <span style={{ fontSize: '12px', color: '#8b949e', fontWeight: 700 }}>Story Series</span>
                 <button
@@ -778,6 +949,22 @@ export default function App() {
                           <input type="text" className="glass-input" style={{ width: '100%', marginTop: '6px', padding: '10px' }} value={editTitle} onChange={e => setEditTitle(e.target.value)} />
                         ) : (
                           <p style={{ fontSize: '16px', fontWeight: 600, marginTop: '4px' }}>{selectedProject.script.title}</p>
+                        )}
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#00f2fe', fontWeight: 700, textTransform: 'uppercase' }}>YouTube Title</label>
+                        {isEditing ? (
+                          <input type="text" className="glass-input" style={{ width: '100%', marginTop: '6px', padding: '10px' }} value={editYoutubeTitle} onChange={e => setEditYoutubeTitle(e.target.value)} />
+                        ) : (
+                          <p style={{ fontSize: '16px', fontWeight: 700, marginTop: '4px', color: '#ffffff' }}>{selectedProject.script.youtubeTitle || selectedProject.script.title}</p>
+                        )}
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#00f2fe', fontWeight: 700, textTransform: 'uppercase' }}>YouTube Description</label>
+                        {isEditing ? (
+                          <textarea rows={4} className="glass-input" style={{ width: '100%', marginTop: '6px', padding: '10px', fontSize: '14px', fontFamily: 'inherit' }} value={editYoutubeDescription} onChange={e => setEditYoutubeDescription(e.target.value)} />
+                        ) : (
+                          <p style={{ fontSize: '14px', marginTop: '4px', lineHeight: '1.55', color: '#c9d1d9', whiteSpace: 'pre-wrap' }}>{selectedProject.script.youtubeDescription || 'No YouTube description generated yet.'}</p>
                         )}
                       </div>
                       <div>

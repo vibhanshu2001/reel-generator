@@ -79,16 +79,50 @@ router.post('/series', async (req, res) => {
         name: name.trim(),
         characterPair: characterPair || 'byte_bug',
         universe: JSON.stringify(universe || {
-          name: 'Byteverse',
-          premise: 'Two explorers travel through digital worlds explaining technology.',
+          name: 'Byte & Bug Universe',
+          premise: 'Every short is an episode from the same comic universe. Byte and Bug must be immediately recognizable. Never generate random people — only these two recurring characters.',
           characters: ['Byte', 'Bug'],
-          rules: [
-            'Byte is the expert',
-            'Bug asks audience questions',
-            'Technology is visualized as worlds'
+          characterBible: {
+            Byte: {
+              role: 'The audience surrogate — asks questions, learns things, reacts emotionally',
+              appearance: 'Young human, bright blue hoodie, black messy hair, large expressive dark eyes, curious/confused expression',
+              personality: 'Curious, easily confused, relatable, shocked by revelations',
+              emotions: ['shocked', 'confused', 'curious', 'excited'],
+              exampleLines: ['Wait... what happens if AWS crashes?', 'Seriously?!', 'But HOW does it know where to go?', 'No way...'],
+              visualAction: 'Head tilts, hands on cheeks in shock, jumping back surprised, leaning toward Bug with curiosity'
+            },
+            Bug: {
+              role: 'The tech expert and storyteller — explains concepts, makes jokes, creates chaos, shows off knowledge dramatically',
+              appearance: 'Young human, vibrant red hoodie, small cute bug antenna sticking out of the hood, confident wide grin, energetic body language',
+              personality: 'Confident, sarcastic, funny, dramatic, energetic',
+              emotions: ['confident', 'sarcastic', 'dramatic', 'explaining'],
+              exampleLines: ['Half the internet starts sweating.', 'Hahaha... not even close.', 'Oh wow, great observation.', 'Let me show you.'],
+              visualAction: 'Pointing dramatically, leaning forward with grin, arms wide open explaining, doing a mic drop, jumping into frame from offscreen'
+            }
+          },
+          storyStructure: {
+            rule: 'Every video is a CONVERSATION, not a lecture',
+            badExample: 'Narrator explains AWS.',
+            goodExample: 'Byte: "Wait... what happens if AWS crashes?" Bug: "Half the internet starts sweating." Byte: "Seriously?" Bug: "Let me show you."',
+            arc: ['Hook (Bug shocks OR Byte asks)', 'Byte questions', 'Bug escalates with chaos', 'Byte deeper confusion', 'Bug reveals dramatically', 'Byte shocked/awed', 'CTA']
+          },
+          visualStyle: 'technical_2d_comic_animation',
+          visualStyleDetails: 'Developer-focused technical comic aesthetic. Strong bold outlines, clean flat gradients, architecture-diagram shapes, terminal/code-inspired surfaces without readable text, APIs, queues, databases, servers, data packets, sparse halftone shadows, and motion streaks for data flow. NOT superhero movie visuals, NOT Pixar 3D, NOT photorealistic, NOT generic AI art.',
+          animationRules: [
+            'Characters NEVER stand still — change pose every 1-2 seconds',
+            'Use: head tilts, hand gestures, walking, jumping, pointing, running, looking around',
+            'At least one crash-through or zoom-into action per video',
+            'Exaggerate ALL expressions — comic characters are LOUD',
+            'Byte emotions: shocked/confused/curious. Bug emotions: confident/sarcastic/dramatic'
           ],
-          visualStyle: 'cartoon_cinematic',
-          continuityLevel: 'light'
+          retentionRules: [
+            'Every 5-8 seconds: surprise beat, joke, or visual reveal',
+            'Bug must be sarcastic at least twice per video',
+            'Byte must express shock with short outbursts at least twice per video',
+            'Important tech words (AWS, CRASHED, BILLIONS, INTERNET) dominate captions',
+            'Hook must grab attention within 3 seconds — no build-up'
+          ],
+          continuityLevel: 'strict'
         })
       }
     });
@@ -101,8 +135,70 @@ router.post('/series', async (req, res) => {
   }
 });
 
+// Suggest Topics — calls Gemini to generate high-retention Byte & Bug topic ideas
+router.get('/suggest-topics', async (req, res) => {
+  const apiKey = process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY || process.env.DEEPSEEK_API_KEY;
+  if (!apiKey) {
+    return res.status(500).json({ error: 'No LLM API key configured.' });
+  }
+
+  const { generateContentWithRetry } = await import('../pipeline/gemini.js');
+
+  const schema: any = {
+    type: 'object',
+    properties: {
+      topics: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            topic:       { type: 'string', description: 'Short topic title, e.g. "How Kafka Actually Works"' },
+            hook:        { type: 'string', description: 'The 1-line hook Byte or Bug would say to open the video. Max 12 words.' },
+            category:    { type: 'string', enum: ['networking', 'databases', 'distributed-systems', 'cloud', 'ai-ml', 'devops', 'security', 'web', 'os', 'algorithms'] },
+            viralPattern:{ type: 'string', enum: ['myth_busting', 'hidden_truth', 'battle', 'race', 'countdown', 'unexpected_twist', 'survival_story', 'mystery_box'] },
+            retentionScore: { type: 'number', description: 'Predicted 15-second retention % (0-100)' }
+          },
+          required: ['topic', 'hook', 'category', 'viralPattern', 'retentionScore']
+        }
+      }
+    },
+    required: ['topics']
+  };
+
+  const prompt = `You are the creative director for the "Byte & Bug" developer Shorts channel.
+Byte (blue hoodie, confused learner) and Bug (red hoodie, sarcastic expert) explore tech concepts together in chaotic comic adventures.
+
+Generate exactly 6 HIGH-RETENTION short video topic ideas for software developers aged 22-35.
+
+Each topic must:
+1. Be immediately intriguing — a developer scrolling at 2am stops for this
+2. Have a shocking/surprising hook that makes you say "wait, really?"
+3. Map to a clear viral pattern (myth busting, hidden truth, battle, unexpected twist, etc.)
+4. Be specific — not "how databases work" but "Why your Postgres query is 200x slower at night"
+5. Feel like it could go viral on TikTok or Instagram Reels for devs
+
+Topics should span different categories. Mix:
+- Counter-intuitive discoveries ("The thing nobody tells you about X")
+- Scary production moments ("What happens when Y fails")  
+- Speed/performance battles ("X vs Y — and the winner shocks everyone")
+- Hidden mechanisms ("The secret inside X that changes everything")
+- Dramatic "oh no" moments that devs fear
+
+Return strictly as JSON matching the schema. Vary the categories. Make every hook punchy.`;
+
+  try {
+    const result = await generateContentWithRetry(apiKey, 'gemini-2.5-flash', prompt, schema);
+    const parsed = JSON.parse(result.text);
+    res.json(parsed.topics);
+  } catch (err: any) {
+    console.error('[SuggestTopics] Failed:', err.message);
+    res.status(500).json({ error: err.message || 'Failed to generate topic suggestions.' });
+  }
+});
+
 // 1. Get all projects
 router.get('/', async (req, res) => {
+
   try {
     const projects = await prisma.project.findMany({
       include: { script: true, series: true },
@@ -250,7 +346,7 @@ router.post('/:id/retry', async (req, res) => {
 // 4. Update script and regenerate scenes/audio
 router.put('/:id/script', async (req, res) => {
   const { id } = req.params;
-  const { title, hook, body, cta, duration } = req.body;
+  const { title, youtubeTitle, youtubeDescription, hook, body, cta, duration } = req.body;
 
   try {
     const project = await prisma.project.findUnique({
@@ -281,7 +377,15 @@ router.put('/:id/script', async (req, res) => {
     // 3. Update project script and status
     await prisma.script.update({
       where: { projectId: id },
-      data: { title, hook, body, cta, duration }
+      data: {
+        title,
+        youtubeTitle: youtubeTitle || title,
+        youtubeDescription: youtubeDescription || `${hook}\n\n${cta}`,
+        hook,
+        body,
+        cta,
+        duration
+      }
     });
 
     await prisma.project.update({
@@ -327,6 +431,8 @@ router.put('/:id/script', async (req, res) => {
 
         const scriptResult = {
           title,
+          youtubeTitle: youtubeTitle || title,
+          youtubeDescription: youtubeDescription || `${hook}\n\n${cta}`,
           hook,
           dialogue: dialogueTurns,
           cta,
@@ -381,7 +487,8 @@ router.put('/:id/script', async (req, res) => {
               camera: scene.camera,
               speaker: scene.speaker,
               dialogue: scene.dialogue,
-              templateProps: scene.templateProps
+              templateProps: scene.templateProps,
+              stylePack
             },
             apiKey,
             outputsDir

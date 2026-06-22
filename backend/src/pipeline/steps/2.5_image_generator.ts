@@ -24,6 +24,19 @@ export interface ImageGeneratorInput {
   speaker: string;
   dialogue: string;
   templateProps?: any;
+  stylePack?: {
+    id: string;
+    palette: {
+      background: string;
+      foreground: string;
+      accent: string;
+      danger: string;
+      success: string;
+    };
+    typography: string;
+    backgroundType: string;
+    glowIntensity: number;
+  };
 }
 
 export interface ImageGeneratorResult {
@@ -169,553 +182,595 @@ export async function runImageGenerator(
 }
 
 /**
- * Composes high-fidelity prompts for Imagen 3/DALL-E 3 using the Character Bible lore.
+ * Composes high-fidelity prompts for Imagen 4/DALL-E 3 using the Byte & Bug Character Bible.
+ *
+ * BYTE: Female teenager, bright blue hoodie, long flowing black hair, large expressive eyes.
+ *       Voice: warm female (EmmaNeural). Always shocked/confused/curious.
+ *
+ * BUG:  Male teenager, red hoodie with small bug antenna on hood, confident wide grin.
+ *       Voice: energetic male (AndrewNeural). Always confident/sarcastic/dramatic.
  */
 function composeImagePrompt(scene: ImageGeneratorInput): string {
-  const envDesc = `${scene.environment.name}: ${scene.environment.description}. The environment and visual concept dominates 85% of the frame.`;
-  
+  const envDesc = `${scene.environment.name}: ${scene.environment.description}.`;
+  const stylePack = scene.stylePack;
+  const technicalStyle = buildTechnicalComicStyle(stylePack);
+
   const charsDesc = scene.characters.map((c) => {
-    const mascotDetails = c.name === 'Byte'
-      ? 'Byte (a small friendly blue futuristic rounded robot with glowing white digital eyes on a dark round visor head, sleek metallic body, cute cartoon style)'
-      : 'Bug (a small cute green companion insect, large expressive eyes, chubby round green body, tiny wings, yellow backpack, cute cartoon style)';
-    return `${mascotDetails} is present, feeling ${c.emotion} and is ${c.action}, but is positioned unobtrusively in the background or side, occupying less than 10% of the screen.`;
+    const poseDesc = (c as any).pose || c.action;
+    if (c.name === 'Byte') {
+      // Byte = FEMALE — long black hair, feminine features, blue hoodie
+      return `Byte (a young teenage girl wearing a bright electric-blue hoodie, long flowing black hair with side-swept bangs, large round expressive dark eyes showing ${c.emotion}, soft feminine features, ${poseDesc}). Byte is clearly female. Byte occupies 30-40% of the frame in the foreground, reacting with exaggerated comic expression.`;
+    } else {
+      // Bug = MALE — red hoodie, antenna, confident grin
+      return `Bug (a young teenage boy wearing a vibrant red hoodie with a small cute bug antenna sticking out of the hood, confident wide grin showing ${c.emotion}, ${poseDesc}). Bug is clearly male. Bug occupies 30-40% of the frame, gesturing dramatically.`;
+    }
   }).join(' ');
 
-  const cameraDesc = `This is a ${scene.camera.shot} camera shot, with a ${scene.camera.motion} effect.`;
+  const cameraDesc = `Camera: ${scene.camera.shot.replace('_', ' ')} shot with ${scene.camera.motion.replace('_', ' ')} motion.`;
 
-  return `Consistent vertical 9:16 vertical composition, premium 3D animated cartoon movie style in the visual style of Zootopia, Pixar, and Big Hero 6. Immersive full-screen environment: ${envDesc}. The scene must occupy the entire vertical frame without any borders, frames, cards, or floating windows. Concept is the hero: the image focuses on a single clear idea with a clear focal point, visible action, and obvious cause-and-effect relationship. Characters: ${charsDesc || 'No characters.'} The concept/environment dominates 90% of the frame. Characters must be small and never compete with the concept for attention. No cyberpunk cities, no generic futuristic AI art, no abstract holograms, no sci-fi wallpaper. Vibrant colors, friendly and clean lighting, easy to understand in 1 second. The image must be purely visual: do NOT include any written text, words, letters, labels, signs, signatures, or captions on any elements in the scene. ${cameraDesc} Detailed 3D CGI rendering, high resolution.`;
+  const speakerFocus = scene.speaker === 'Byte'
+    ? 'Focus on Byte (female, blue hoodie, long black hair) in the foreground looking shocked/confused.'
+    : 'Focus on Bug (male, red hoodie, antenna) in the foreground explaining dramatically.';
+
+  return `Vertical 9:16 composition. ${technicalStyle} The image must fill the entire vertical frame without borders or panels. Environment (60-70% of frame): ${envDesc} Characters (30-40% of frame): ${charsDesc || 'No characters in this scene.'} ${speakerFocus} ${cameraDesc} NO written text, words, letters, labels, captions, logos, or UI labels anywhere. No superhero movie look. No city-swinging visual language. No Pixar 3D. No photorealistic rendering. Pure 2D technical comic animation, high contrast, clean developer-focused visual metaphor.`;
+}
+
+function buildTechnicalComicStyle(stylePack?: ImageGeneratorInput['stylePack']): string {
+  const base = 'TECHNICAL 2D COMIC ANIMATION STYLE for software engineering education. Use bold ink outlines, clean vector-like shapes, readable architecture-diagram silhouettes, code-editor and terminal-inspired surfaces without readable text, network paths, server blocks, data packets, database cylinders, queues, caches, APIs, and cloud infrastructure as visual metaphors. Use halftone texture sparingly, precise speed lines for data flow, and comic impact frames only for technical failure or reveal moments.';
+
+  if (!stylePack) {
+    return `${base} Palette: dark technical background, electric cyan and green accents, restrained warning colors.`;
+  }
+
+  const palette = `Palette: background ${stylePack.palette.background}, foreground ${stylePack.palette.foreground}, accent ${stylePack.palette.accent}, danger ${stylePack.palette.danger}, success ${stylePack.palette.success}.`;
+
+  switch (stylePack.id) {
+    case 'terminal':
+      return `${base} Terminal comic variant: dark shell-like spaces, monospace-inspired block shapes, command-line panels with abstract unreadable glyphs, green data streams, minimal glow. ${palette}`;
+    case 'infographic':
+      return `${base} Infographic comic variant: clean light technical canvas, structured comparison shapes, charts, timelines, arrows, architecture blocks, restrained ink lines, low glow. ${palette}`;
+    case 'minimal':
+      return `${base} Minimal technical comic variant: sparse composition, editorial shapes, fewer textures, crisp arrows, focused single metaphor, muted glow. ${palette}`;
+    case 'cyberpunk':
+    default:
+      return `${base} Cyberpunk developer comic variant: dark grid spaces, neon data flows, API gateways, server corridors, luminous packets, high energy but still technical. ${palette}`;
+  }
 }
 
 /**
- * Programmatic SVG generator drawing Byte and Bug mascots inside thematic backgrounds
- * with customized visual details mapping to speaker, emotion, environment, and story beat.
- * Completely parses environments, poses characters dynamically based on action scripts,
- * and executes camera shot shifts on the root view container.
+ * Programmatic SVG generator drawing Byte and Bug as comic-style hoodie-wearing humans
+ * inside thematic backgrounds with dynamic poses, motion streaks, impact frames,
+ * and halftone textures consistent with a technical comic animation aesthetic.
+ *
+ * BYTE: Blue hoodie human. Bug antenna NOT present. Shocked/curious/confused expressions.
+ * BUG:  Red hoodie human with small bug antenna on hood. Confident grin. Energetic poses.
  */
 function drawSvgMascotScene(input: ImageGeneratorInput): string {
   const { environment, characters, camera } = input;
   const envName = environment.name.toLowerCase();
-  
-  // 1. Identify Environment archetype
-  const isKafka = envName.includes('factory') || envName.includes('partition') || envName.includes('belt') || envName.includes('kafka');
-  const isRedis = envName.includes('vault') || envName.includes('memory') || envName.includes('speed') || envName.includes('redis') || envName.includes('disk');
-  const isK8s = envName.includes('city') || envName.includes('kubernetes') || envName.includes('harbor') || envName.includes('docker') || envName.includes('pod');
-  const isChatGpt = envName.includes('chatgpt') || envName.includes('arena') || envName.includes('predict') || envName.includes('token') || envName.includes('ai');
 
-  // Set default palette colors
-  let bgGradientStart = '#020308';
-  let bgGradientEnd = '#0b132b';
-  let gridColor = 'rgba(0, 242, 254, 0.05)';
-  let accentColor = '#00f2fe';
-  let envLabelText = 'Cyber Fortress';
-
-  if (isKafka) {
-    bgGradientStart = '#040914';
-    bgGradientEnd = '#0b1021';
-    gridColor = 'rgba(57, 255, 20, 0.04)';
-    accentColor = '#39ff14'; // neon green
-    envLabelText = 'Kafka Partition Factory';
-  } else if (isRedis) {
-    bgGradientStart = '#070708';
-    bgGradientEnd = '#1c150b';
-    gridColor = 'rgba(255, 223, 0, 0.04)';
-    accentColor = '#ffdf00'; // gold / amber
-    envLabelText = 'Redis Memory Vault';
-  } else if (isK8s) {
-    bgGradientStart = '#05020a';
-    bgGradientEnd = '#1b0a2b';
-    gridColor = 'rgba(236, 72, 153, 0.04)';
-    accentColor = '#ec4899'; // pink
-    envLabelText = 'Kubernetes Container City';
-  } else if (isChatGpt) {
-    bgGradientStart = '#02040c';
-    bgGradientEnd = '#0b1b3a';
-    gridColor = 'rgba(14, 165, 233, 0.05)';
-    accentColor = '#0ea5e9'; // sky blue
-    envLabelText = 'Word Prediction Arena';
-  }
-
-  // 2. Identify Poses and layout positions based on actions
-  const drawByte = characters.some(c => c.name === 'Byte');
-  const drawBug = characters.some(c => c.name === 'Bug');
   const byteData = characters.find(c => c.name === 'Byte');
   const bugData = characters.find(c => c.name === 'Bug');
+  const drawByte = Boolean(byteData);
+  const drawBug = Boolean(bugData);
 
-  // Default coordinate setup (Centered/Balanced)
-  let byteX = 320;
-  let byteY = 1250;
-  let byteScale = 0.55;
-  let byteRot = 0;
+  const byteEmotion = (byteData?.emotion || 'curious').toLowerCase();
+  const bugEmotion = (bugData?.emotion || 'confident').toLowerCase();
+  const byteAction = (byteData?.action || '').toLowerCase();
+  const bugAction = (bugData?.action || '').toLowerCase();
 
-  let bugX = 760;
-  let bugY = 1280;
-  let bugScale = 0.55;
-  let bugRot = 0;
+  // ==========================================================================
+  // 1. ENVIRONMENT THEME DETECTION & PALETTE
+  // ==========================================================================
+  const isKafka = envName.includes('factory') || envName.includes('belt') || envName.includes('kafka');
+  const isRedis = envName.includes('vault') || envName.includes('memory') || envName.includes('speed') || envName.includes('redis');
+  const isK8s = envName.includes('kubernetes') || envName.includes('docker') || envName.includes('container') || envName.includes('pod');
+  const isCloud = envName.includes('cloud') || envName.includes('aws') || envName.includes('server') || envName.includes('crash');
+  const isAI = envName.includes('ai') || envName.includes('llm') || envName.includes('predict') || envName.includes('gpt');
 
-  const byteAction = byteData?.action.toLowerCase() || '';
-  const bugAction = bugData?.action.toLowerCase() || '';
+  let bgColor1 = '#04050f';
+  let bgColor2 = '#0b0d2a';
+  let accentColor = '#00aaff';
+  let accentColor2 = '#ffd60a';
+  let gridColor = 'rgba(0, 170, 255, 0.06)';
+  let envLabel = 'DIGITAL WORLD';
 
-  // Scene compositions
-  // Composition A: Trapped / Control panel
-  if (bugAction.includes('trap') || bugAction.includes('inside') || bugAction.includes('conveyor') || bugAction.includes('lost')) {
-    bugX = 540;
-    bugY = 850;
-    bugScale = 0.48;
-    
-    byteX = 240;
-    byteY = 1300;
-    byteRot = -10; // leaning towards console
-  } 
-  // Composition B: Chasing / Running / Race
-  else if (byteAction.includes('run') || bugAction.includes('run') || byteAction.includes('race') || bugAction.includes('race') || bugAction.includes('chase')) {
-    byteX = 350;
-    byteY = 1250;
-    byteRot = -12; // lean forward
-    byteScale = 0.52;
-
-    bugX = 780;
-    bugY = 1230;
-    bugRot = -18; // lean forward running
-    bugScale = 0.52;
-  }
-  // Composition C: Falling / Flying
-  else if (bugAction.includes('fall') || bugAction.includes('fly') || bugAction.includes('drop')) {
-    bugX = 540;
-    bugY = 700;
-    bugRot = 140; // falling head first / tilted
-    bugScale = 0.48;
-
-    byteX = 260;
-    byteY = 1320;
-  }
-  else if (byteAction.includes('fall') || byteAction.includes('fly') || byteAction.includes('ride')) {
-    byteX = 540;
-    byteY = 750;
-    byteRot = -20;
-    byteScale = 0.48;
-
-    bugX = 800;
-    bugY = 1320;
-  }
-  // Composition D: Climbing / Searching / Pointing
-  else if (byteAction.includes('point') || byteAction.includes('stand on')) {
-    byteX = 240;
-    byteY = 1000; // standing high
-    byteScale = 0.50;
-
-    bugX = 720;
-    bugY = 1300;
+  if (isKafka) {
+    bgColor1 = '#050f04'; bgColor2 = '#0d1f0b';
+    accentColor = '#39ff14'; accentColor2 = '#ffd60a';
+    gridColor = 'rgba(57,255,20,0.05)';
+    envLabel = 'KAFKA FACTORY';
+  } else if (isRedis) {
+    bgColor1 = '#0f0a00'; bgColor2 = '#1a1200';
+    accentColor = '#ffd60a'; accentColor2 = '#ff6b00';
+    gridColor = 'rgba(255,214,10,0.05)';
+    envLabel = 'MEMORY VAULT';
+  } else if (isK8s) {
+    bgColor1 = '#060010'; bgColor2 = '#12001f';
+    accentColor = '#bf5fff'; accentColor2 = '#00f5c4';
+    gridColor = 'rgba(191,95,255,0.05)';
+    envLabel = 'K8S CITY';
+  } else if (isCloud) {
+    bgColor1 = '#000d1a'; bgColor2 = '#001529';
+    accentColor = '#00d4ff'; accentColor2 = '#ff3b3b';
+    gridColor = 'rgba(0,212,255,0.05)';
+    envLabel = 'CLOUD SERVERS';
+  } else if (isAI) {
+    bgColor1 = '#050010'; bgColor2 = '#0b0020';
+    accentColor = '#a855f7'; accentColor2 = '#00d4ff';
+    gridColor = 'rgba(168,85,247,0.05)';
+    envLabel = 'AI GRID';
   }
 
-  // 3. Environmental Drawing Elements
+  // ==========================================================================
+  // 2. ENVIRONMENT VISUAL ELEMENTS (Comic style: bold outlines, halftones)
+  // ==========================================================================
   let environmentSvg = '';
 
   if (isKafka) {
-    // Kafka Conveyor belts, partition lines, and data packets
     environmentSvg = `
-      <!-- Kafka Factory Belts -->
-      <g stroke="${accentColor}" stroke-linecap="round" fill="none">
-        <!-- Main Conveyor Belt -->
-        <path d="M -100 1400 Q 540 1450 1180 1400" stroke-width="24" stroke-dasharray="25, 20" opacity="0.85"/>
-        <path d="M -100 1400 Q 540 1450 1180 1400" stroke-width="4" opacity="0.3"/>
-        
-        <!-- Overhead Belt -->
-        <path d="M -100 650 Q 540 600 1180 650" stroke-width="16" stroke-dasharray="15, 25" opacity="0.6"/>
-      </g>
-      
-      <!-- Partition dividers/gates -->
-      <g opacity="0.8">
-        <rect x="420" y="700" width="240" height="300" rx="16" fill="rgba(4,9,20,0.85)" stroke="${accentColor}" stroke-width="6" stroke-dasharray="10, 10" filter="drop-shadow(0 0 15px ${accentColor})"/>
-        <text x="540" y="750" fill="${accentColor}" font-family="monospace" font-size="28" font-weight="bold" text-anchor="middle">PARTITION 0</text>
-        <line x1="420" y1="780" x2="660" y2="780" stroke="${accentColor}" stroke-width="2"/>
-        
-        <!-- Partition 1 (Background left) -->
-        <rect x="80" y="800" width="160" height="200" rx="12" fill="rgba(4,9,20,0.6)" stroke="#0ea5e9" stroke-width="3" stroke-dasharray="5, 5"/>
-        <text x="160" y="840" fill="#0ea5e9" font-family="monospace" font-size="16" font-weight="bold" text-anchor="middle">PARTITION 1</text>
-        
-        <!-- Partition 2 (Background right) -->
-        <rect x="840" y="800" width="160" height="200" rx="12" fill="rgba(4,9,20,0.6)" stroke="#0ea5e9" stroke-width="3" stroke-dasharray="5, 5"/>
-        <text x="920" y="840" fill="#0ea5e9" font-family="monospace" font-size="16" font-weight="bold" text-anchor="middle">PARTITION 2</text>
+      <!-- Comic Kafka Factory: conveyor belts, data packets, partition gates -->
+      <!-- Halftone background dots -->
+      <pattern id="htDots" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
+        <circle cx="10" cy="10" r="2.5" fill="${accentColor}" opacity="0.12"/>
+      </pattern>
+      <rect width="1080" height="1920" fill="url(#htDots)"/>
+
+      <!-- Main conveyor belt (bold outline comic style) -->
+      <rect x="0" y="880" width="1080" height="80" rx="0" fill="#1a2200" stroke="${accentColor}" stroke-width="6"/>
+      <line x1="0" y1="900" x2="1080" y2="900" stroke="${accentColor}" stroke-width="3" stroke-dasharray="40,20" opacity="0.9"/>
+      <line x1="0" y1="940" x2="1080" y2="940" stroke="${accentColor}" stroke-width="3" stroke-dasharray="40,20" opacity="0.9"/>
+
+      <!-- Speed lines (motion streaks) -->
+      <g stroke="${accentColor}" stroke-width="4" opacity="0.25">
+        <line x1="-50" y1="600" x2="400" y2="600"/>
+        <line x1="-50" y1="640" x2="600" y2="640"/>
+        <line x1="-50" y1="680" x2="300" y2="680"/>
+        <line x1="680" y1="600" x2="1130" y2="600"/>
+        <line x1="780" y1="650" x2="1130" y2="650"/>
       </g>
 
-      <!-- Glowing Data Packets floating overhead -->
-      <g fill="${accentColor}" filter="drop-shadow(0 0 10px ${accentColor})">
-        <rect x="180" y="615" width="50" height="20" rx="10"/>
-        <rect x="480" y="590" width="50" height="20" rx="10"/>
-        <rect x="820" y="615" width="50" height="20" rx="10"/>
-        
-        <!-- Packets on main belt -->
-        <circle cx="200" cy="1410" r="14"/>
-        <circle cx="540" cy="1435" r="14"/>
-        <circle cx="880" cy="1410" r="14"/>
+      <!-- Data packets on belt (bright bold squares) -->
+      <g filter="drop-shadow(0 0 12px ${accentColor})">
+        <rect x="120" y="890" width="60" height="60" rx="8" fill="${accentColor}" stroke="#000" stroke-width="3"/>
+        <rect x="380" y="888" width="70" height="64" rx="8" fill="${accentColor2}" stroke="#000" stroke-width="3"/>
+        <rect x="680" y="892" width="55" height="56" rx="8" fill="${accentColor}" stroke="#000" stroke-width="3"/>
+        <rect x="900" y="886" width="65" height="68" rx="8" fill="${accentColor2}" stroke="#000" stroke-width="3"/>
       </g>
+
+      <!-- Partition gate structure -->
+      <rect x="430" y="560" width="220" height="300" rx="12" fill="rgba(10,34,0,0.85)" stroke="${accentColor}" stroke-width="8"/>
+      <rect x="450" y="580" width="180" height="40" rx="6" fill="${accentColor}" opacity="0.2"/>
     `;
   } else if (isRedis) {
-    // Redis Memory Vault, speed trails, lightning
     environmentSvg = `
-      <!-- Redis Central Vault safe lock in background -->
-      <circle cx="540" cy="800" r="280" fill="none" stroke="rgba(255, 223, 0, 0.08)" stroke-width="40"/>
-      <circle cx="540" cy="800" r="240" fill="none" stroke="${accentColor}" stroke-width="12" stroke-dasharray="10, 20" filter="drop-shadow(0 0 20px ${accentColor})"/>
-      <circle cx="540" cy="800" r="80" fill="rgba(7,7,8,0.9)" stroke="${accentColor}" stroke-width="8"/>
-      
-      <!-- Vault Dial details -->
-      <line x1="540" y1="720" x2="540" y2="760" stroke="${accentColor}" stroke-width="6"/>
-      <line x1="540" y1="840" x2="540" y2="880" stroke="${accentColor}" stroke-width="6"/>
-      <line x1="460" y1="800" x2="500" y2="800" stroke="${accentColor}" stroke-width="6"/>
-      <line x1="580" y1="800" x2="620" y2="800" stroke="${accentColor}" stroke-width="6"/>
+      <!-- Comic Redis Vault: concentric rings, lightning bolts, speed trails -->
+      <pattern id="htDots" x="0" y="0" width="18" height="18" patternUnits="userSpaceOnUse">
+        <circle cx="9" cy="9" r="2" fill="${accentColor}" opacity="0.1"/>
+      </pattern>
+      <rect width="1080" height="1920" fill="url(#htDots)"/>
 
-      <!-- Lightning / Speed trails -->
-      <g stroke="${accentColor}" stroke-linecap="round" fill="none" opacity="0.8">
-        <!-- Energy Bolt 1 -->
-        <path d="M 120 400 L 220 650 L 160 700 L 280 950" stroke-width="6" filter="drop-shadow(0 0 10px ${accentColor})"/>
-        <!-- Energy Bolt 2 -->
-        <path d="M 960 400 L 860 650 L 920 700 L 800 950" stroke-width="6" filter="drop-shadow(0 0 10px ${accentColor})"/>
-        
-        <!-- Speed trails behind characters -->
-        <path d="M 100 1350 L 980 1350" stroke-width="4" stroke-dasharray="30, 30" opacity="0.4"/>
+      <!-- Vault rings (bold outlines) -->
+      <circle cx="540" cy="820" r="320" fill="none" stroke="${accentColor}" stroke-width="10" stroke-dasharray="30,20" opacity="0.6"/>
+      <circle cx="540" cy="820" r="220" fill="none" stroke="${accentColor2}" stroke-width="8" opacity="0.5"/>
+      <circle cx="540" cy="820" r="100" fill="${accentColor}" opacity="0.12" stroke="${accentColor}" stroke-width="6"/>
+
+      <!-- Lightning bolts (comic style) -->
+      <g fill="${accentColor2}" stroke="#000" stroke-width="3" filter="drop-shadow(0 0 8px ${accentColor2})">
+        <polygon points="100,400 140,550 110,550 150,700" />
+        <polygon points="940,380 980,530 950,530 990,680" />
       </g>
-      
-      <!-- Glowing RAM slots / memory blocks -->
-      <g fill="rgba(255,223,0,0.1)" stroke="${accentColor}" stroke-width="2">
-        <rect x="250" y="1420" width="80" height="25" rx="4"/>
-        <rect x="350" y="1420" width="80" height="25" rx="4"/>
-        <rect x="450" y="1420" width="80" height="25" rx="4"/>
-        <rect x="550" y="1420" width="80" height="25" rx="4"/>
-        <rect x="650" y="1420" width="80" height="25" rx="4"/>
-        <rect x="750" y="1420" width="80" height="25" rx="4"/>
+
+      <!-- Speed trails (horizontal motion lines) -->
+      <g stroke="${accentColor}" opacity="0.3">
+        <line x1="0" y1="1100" x2="1080" y2="1100" stroke-width="6"/>
+        <line x1="0" y1="1120" x2="800" y2="1120" stroke-width="4"/>
+        <line x1="200" y1="1140" x2="1080" y2="1140" stroke-width="4"/>
       </g>
     `;
   } else if (isK8s) {
-    // Kubernetes container city, pods, service bridges
     environmentSvg = `
-      <!-- Container City stacks -->
-      <g stroke="${accentColor}" stroke-width="4" fill="rgba(236,72,153,0.06)">
-        <!-- Giant background containers -->
-        <rect x="60" y="550" width="280" height="180" rx="8"/>
-        <line x1="60" y1="610" x2="340" y2="610" stroke="${accentColor}" stroke-width="2"/>
-        <line x1="60" y1="670" x2="340" y2="670" stroke="${accentColor}" stroke-width="2"/>
+      <!-- Comic K8s City: floating container pods, service bridges -->
+      <pattern id="htDots" x="0" y="0" width="22" height="22" patternUnits="userSpaceOnUse">
+        <circle cx="11" cy="11" r="2.5" fill="${accentColor}" opacity="0.09"/>
+      </pattern>
+      <rect width="1080" height="1920" fill="url(#htDots)"/>
 
-        <rect x="60" y="750" width="280" height="180" rx="8"/>
-        <line x1="60" y1="810" x2="340" y2="810" stroke="${accentColor}" stroke-width="2"/>
-        <line x1="60" y1="870" x2="340" y2="870" stroke="${accentColor}" stroke-width="2"/>
-
-        <!-- Right container stacks -->
-        <rect x="740" y="600" width="280" height="180" rx="8"/>
-        <line x1="740" y1="660" x2="1020" y2="660" stroke="${accentColor}" stroke-width="2"/>
-        <line x1="740" y1="720" x2="1020" y2="720" stroke="${accentColor}" stroke-width="2"/>
-        
-        <rect x="740" y="800" width="280" height="180" rx="8" stroke="#38bdf8" fill="rgba(56,189,248,0.05)"/>
-        <line x1="740" y1="860" x2="1020" y2="860" stroke="#38bdf8" stroke-width="2"/>
-        <line x1="740" y1="920" x2="1020" y2="920" stroke="#38bdf8" stroke-width="2"/>
+      <!-- Container blocks (comic bold rectangles) -->
+      <g stroke="${accentColor}" stroke-width="6" fill="rgba(100,0,200,0.08)">
+        <rect x="50" y="500" width="260" height="160" rx="12"/>
+        <rect x="50" y="680" width="260" height="160" rx="12"/>
+        <rect x="770" y="520" width="260" height="160" rx="12"/>
+        <rect x="770" y="700" width="260" height="160" rx="12"/>
       </g>
 
-      <!-- Pods nodes circles -->
-      <g filter="drop-shadow(0 0 8px ${accentColor})">
-        <!-- Pod Alpha -->
-        <circle cx="200" cy="1150" r="60" fill="none" stroke="${accentColor}" stroke-width="4" stroke-dasharray="6,6"/>
-        <circle cx="200" cy="1150" r="15" fill="${accentColor}"/>
-        <text x="200" y="1240" fill="#ffffff" font-family="monospace" font-size="14" text-anchor="middle">pod-core-alpha</text>
-
-        <!-- Pod Beta -->
-        <circle cx="880" cy="1150" r="60" fill="none" stroke="${accentColor}" stroke-width="4" stroke-dasharray="6,6"/>
-        <circle cx="880" cy="1150" r="15" fill="${accentColor}"/>
-        <text x="880" y="1240" fill="#ffffff" font-family="monospace" font-size="14" text-anchor="middle">pod-core-beta</text>
+      <!-- Service connection lines (comic dashed) -->
+      <g stroke="${accentColor2}" stroke-width="6" fill="none" stroke-dasharray="20,14" opacity="0.7">
+        <line x1="310" y1="590" x2="770" y2="590"/>
+        <line x1="310" y1="760" x2="770" y2="760"/>
+        <line x1="180" y1="660" x2="180" y2="700"/>
+        <line x1="900" y1="680" x2="900" y2="700"/>
       </g>
 
-      <!-- Service bridges pipelines -->
-      <path d="M 200 1150 H 880" stroke="${accentColor}" stroke-width="8" fill="none" opacity="0.6" stroke-dasharray="15, 10"/>
-      <path d="M 340 640 L 740 690" stroke="#38bdf8" stroke-width="6" fill="none" opacity="0.5"/>
+      <!-- Pod status circles -->
+      <g filter="drop-shadow(0 0 10px ${accentColor})">
+        <circle cx="180" cy="590" r="30" fill="${accentColor}" stroke="#000" stroke-width="4"/>
+        <circle cx="900" cy="590" r="30" fill="${accentColor}" stroke="#000" stroke-width="4"/>
+      </g>
     `;
-  } else if (isChatGpt) {
-    // ChatGPT Word Prediction Arena, floating tokens, probability streams
+  } else if (isCloud) {
     environmentSvg = `
-      <!-- Glowing neural node center -->
-      <circle cx="540" cy="720" r="150" fill="none" stroke="rgba(14, 165, 233, 0.15)" stroke-width="60"/>
-      <circle cx="540" cy="720" r="120" fill="none" stroke="${accentColor}" stroke-width="4" stroke-dasharray="5,15" filter="drop-shadow(0 0 10px ${accentColor})"/>
+      <!-- Comic Cloud: server towers, data highways, alert sirens -->
+      <pattern id="htDots" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
+        <circle cx="10" cy="10" r="2" fill="${accentColor}" opacity="0.1"/>
+      </pattern>
+      <rect width="1080" height="1920" fill="url(#htDots)"/>
 
-      <!-- Floating word prediction boxes -->
-      <g filter="drop-shadow(0 0 10px rgba(14,165,233,0.4))">
-        <!-- token 1 -->
-        <g transform="translate(180, 500) rotate(-10)">
-          <rect x="0" y="0" width="180" height="70" rx="12" fill="#0b1b3a" stroke="${accentColor}" stroke-width="3"/>
-          <text x="90" y="45" fill="#ffffff" font-family="'Outfit', sans-serif" font-size="24" font-weight="900" text-anchor="middle">"attention"</text>
-        </g>
-        
-        <!-- token 2 -->
-        <g transform="translate(680, 520) rotate(15)">
-          <rect x="0" y="0" width="160" height="70" rx="12" fill="#0b1b3a" stroke="${accentColor}" stroke-width="3"/>
-          <text x="80" y="45" fill="#ffffff" font-family="'Outfit', sans-serif" font-size="24" font-weight="900" text-anchor="middle">"vector"</text>
-        </g>
-
-        <!-- token 3 (Target / high probability) -->
-        <g transform="translate(430, 850)">
-          <rect x="0" y="0" width="220" height="80" rx="16" fill="#0f2b5c" stroke="#ffdf00" stroke-width="5" filter="drop-shadow(0 0 12px #ffdf00)"/>
-          <text x="110" y="42" fill="#ffdf00" font-family="'Outfit', sans-serif" font-size="22" font-weight="800" text-anchor="middle">PROBABILITY: 98%</text>
-          <text x="110" y="68" fill="#ffffff" font-family="'Outfit', sans-serif" font-size="24" font-weight="900" text-anchor="middle">"transformers"</text>
-        </g>
+      <!-- Server rack towers (comic bold) -->
+      <g stroke="${accentColor}" stroke-width="6" fill="rgba(0,30,60,0.8)">
+        <rect x="80" y="450" width="160" height="480" rx="12"/>
+        <rect x="460" y="380" width="160" height="550" rx="12"/>
+        <rect x="840" y="470" width="160" height="460" rx="12"/>
       </g>
 
-      <!-- Connection curves (Probability Streams) -->
-      <path d="M 270 570 C 350 720, 420 720, 540 850" stroke="${accentColor}" stroke-width="4" fill="none" opacity="0.6"/>
-      <path d="M 760 590 C 680 720, 660 720, 540 850" stroke="${accentColor}" stroke-width="4" fill="none" opacity="0.6"/>
+      <!-- Rack LED details -->
+      <g fill="${accentColor}" filter="drop-shadow(0 0 6px ${accentColor})">
+        <rect x="100" y="490" width="120" height="8" rx="4"/>
+        <rect x="100" y="520" width="120" height="8" rx="4"/>
+        <rect x="100" y="550" width="80" height="8" rx="4"/>
+        <rect x="480" y="420" width="120" height="8" rx="4"/>
+        <rect x="480" y="450" width="120" height="8" rx="4"/>
+      </g>
+
+      <!-- Alert siren (comic red burst) -->
+      <g transform="translate(540, 280)" filter="drop-shadow(0 0 16px #ff3b3b)">
+        <circle cx="0" cy="0" r="60" fill="#ff3b3b" stroke="#000" stroke-width="6"/>
+        <!-- Comic impact spikes -->
+        <polygon points="0,-80 8,-65 0,-55 -8,-65" fill="#ff3b3b" stroke="#000" stroke-width="3"/>
+        <polygon points="80,0 65,8 55,0 65,-8" fill="#ff3b3b" stroke="#000" stroke-width="3"/>
+        <polygon points="0,80 8,65 0,55 -8,65" fill="#ff3b3b" stroke="#000" stroke-width="3"/>
+        <polygon points="-80,0 -65,8 -55,0 -65,-8" fill="#ff3b3b" stroke="#000" stroke-width="3"/>
+        <polygon points="57,-57 48,-42 38,-52 52,-62" fill="#ff3b3b" stroke="#000" stroke-width="3"/>
+        <polygon points="57,57 42,48 52,38 62,52" fill="#ff3b3b" stroke="#000" stroke-width="3"/>
+      </g>
+
+      <!-- Data highway (bold lines across) -->
+      <line x1="240" y1="700" x2="460" y2="700" stroke="${accentColor2}" stroke-width="8" stroke-dasharray="25,15" opacity="0.8"/>
+      <line x1="620" y1="700" x2="840" y2="700" stroke="${accentColor2}" stroke-width="8" stroke-dasharray="25,15" opacity="0.8"/>
     `;
   } else {
-    // Generic PostgreSQL / Library
+    // Generic digital grid
     environmentSvg = `
-      <!-- Library shelves -->
-      <line x1="80" y1="500" x2="1000" y2="500" stroke="rgba(255,255,255,0.15)" stroke-width="12"/>
-      <line x1="80" y1="850" x2="1000" y2="850" stroke="rgba(255,255,255,0.15)" stroke-width="12"/>
-      <line x1="80" y1="1200" x2="1000" y2="1200" stroke="rgba(255,255,255,0.15)" stroke-width="12"/>
+      <pattern id="htDots" x="0" y="0" width="24" height="24" patternUnits="userSpaceOnUse">
+        <circle cx="12" cy="12" r="2" fill="${accentColor}" opacity="0.1"/>
+      </pattern>
+      <rect width="1080" height="1920" fill="url(#htDots)"/>
 
-      <!-- Books stacks -->
-      <g fill="rgba(168,85,247,0.2)" stroke="${accentColor}" stroke-width="3" filter="drop-shadow(0 0 8px ${accentColor})">
-        <rect x="180" y="320" width="70" height="180" rx="4"/>
-        <rect x="255" y="300" width="75" height="200" rx="4"/>
-        <rect x="335" y="340" width="65" height="160" rx="4"/>
-        
-        <rect x="700" y="680" width="80" height="170" rx="4" fill="rgba(56,189,248,0.2)" stroke="#38bdf8"/>
-        <rect x="785" y="650" width="75" height="200" rx="4" fill="rgba(56,189,248,0.2)" stroke="#38bdf8"/>
+      <!-- Digital grid lines -->
+      <g stroke="${accentColor}" stroke-width="2" opacity="0.2">
+        <line x1="360" y1="0" x2="360" y2="1920"/>
+        <line x1="720" y1="0" x2="720" y2="1920"/>
+        <line x1="0" y1="640" x2="1080" y2="640"/>
+        <line x1="0" y1="1280" x2="1080" y2="1280"/>
+      </g>
+
+      <!-- Floating data nodes -->
+      <g filter="drop-shadow(0 0 12px ${accentColor})">
+        <circle cx="180" cy="500" r="40" fill="none" stroke="${accentColor}" stroke-width="6"/>
+        <circle cx="540" cy="350" r="55" fill="none" stroke="${accentColor2}" stroke-width="6"/>
+        <circle cx="900" cy="500" r="40" fill="none" stroke="${accentColor}" stroke-width="6"/>
+        <circle cx="180" cy="1200" r="35" fill="none" stroke="${accentColor}" stroke-width="5"/>
+        <circle cx="900" cy="1200" r="35" fill="none" stroke="${accentColor}" stroke-width="5"/>
+      </g>
+
+      <!-- Connection lines -->
+      <g stroke="${accentColor}" stroke-width="4" stroke-dasharray="16,10" opacity="0.4">
+        <line x1="180" y1="500" x2="540" y2="350"/>
+        <line x1="540" y1="350" x2="900" y2="500"/>
+        <line x1="180" y1="1200" x2="540" y2="1350"/>
+        <line x1="900" y1="1200" x2="540" y2="1350"/>
       </g>
     `;
   }
 
-  // 4. Character Visual elements SVG builders
+  // ==========================================================================
+  // 3. CHARACTER POSITIONS (based on speaker and actions)
+  // ==========================================================================
+  let byteX = 240, byteY = 1350;
+  let bugX = 840, bugY = 1350;
+
+  // Swap sides if Bug is speaking
+  if (input.speaker === 'Bug') {
+    bugX = 300; byteX = 800;
+  }
+
+  // Dynamic pose adjustments
+  if (byteAction.includes('jump') || byteAction.includes('leap')) { byteY -= 120; }
+  if (bugAction.includes('lean') || bugAction.includes('forward')) { bugX -= 40; }
+  if (byteAction.includes('run') || bugAction.includes('run')) {
+    byteY -= 40; bugY -= 40;
+  }
+
+  // ==========================================================================
+  // 4. BYTE CHARACTER SVG (Blue hoodie human)
+  // ==========================================================================
   let byteSvg = '';
-  let bugSvg = '';
+  if (drawByte) {
+    const isShocked = byteEmotion === 'shocked' || byteEmotion === 'surprised';
+    const isConfused = byteEmotion === 'confused';
+    const isExcited = byteEmotion === 'excited' || byteEmotion === 'curious';
 
-  // Byte mascot builder
-  if (drawByte && byteData) {
-    const bx = 300;
-    const by = 1150;
-    const emotion = byteData.emotion.toLowerCase();
+    // Face expression
+    let byteEyesPath = '';
+    let byteMouthPath = '';
+    let byteExtras = '';
 
-    let byteEyes = `<ellipse cx="${bx - 35}" cy="${by - 110}" rx="14" ry="14" fill="#ffffff" filter="drop-shadow(0 0 8px #00f2fe)"/>
-                    <ellipse cx="${bx + 35}" cy="${by - 110}" rx="14" ry="14" fill="#ffffff" filter="drop-shadow(0 0 8px #00f2fe)"/>`;
-    let byteMouth = `<path d="M ${bx - 15} ${by - 60} Q ${bx} ${by - 50} ${bx + 15} ${by - 60}" stroke="#00f2fe" stroke-width="6" fill="none" stroke-linecap="round"/>`;
-
-    if (emotion === 'shock' || emotion === 'surprised' || emotion === 'shocked' || emotion === 'panic') {
-      byteEyes = `<circle cx="${bx - 35}" cy="${by - 110}" r="22" fill="#ffffff" filter="drop-shadow(0 0 12px #ff3366)"/>
-                  <circle cx="${bx + 35}" cy="${by - 110}" r="22" fill="#ffffff" filter="drop-shadow(0 0 12px #ff3366)"/>`;
-      byteMouth = `<circle cx="${bx}" cy="${by - 55}" r="15" fill="#ff3366" filter="drop-shadow(0 0 6px #ff3366)"/>`;
-    } else if (emotion === 'confused') {
-      byteEyes = `<path d="M ${bx - 45} ${by - 120} L ${bx - 25} ${by - 100} M ${bx - 25} ${by - 120} L ${bx - 45} ${by - 100}" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
-                  <circle cx="${bx + 35}" cy="${by - 110}" r="14" fill="#ffffff" filter="drop-shadow(0 0 8px #00f2fe)"/>`;
-      byteMouth = `<path d="M ${bx - 20} ${by - 55} L ${bx + 20} ${by - 62}" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>`;
-    } else if (emotion === 'explaining' || emotion === 'confident' || emotion === 'focused') {
-      byteEyes = `<path d="M ${bx - 50} ${by - 115} Q ${bx - 35} ${by - 130} ${bx - 20} ${by - 115}" stroke="#00f2fe" stroke-width="8" fill="none" stroke-linecap="round"/>
-                  <path d="M ${bx + 20} ${by - 115} Q ${bx + 35} ${by - 130} ${bx + 50} ${by - 115}" stroke="#00f2fe" stroke-width="8" fill="none" stroke-linecap="round"/>`;
-      byteMouth = `<path d="M ${bx - 25} ${by - 65} Q ${bx} ${by - 35} ${bx + 25} ${by - 65}" fill="#00f2fe" stroke-linecap="round"/>`;
-    }
-
-    // Interactive actions: Pointing arms
-    let actionOverlays = '';
-    if (byteAction.includes('point')) {
-      actionOverlays += `
-        <!-- Pointing arm -->
-        <path d="M ${bx - 80} ${by + 60} L ${bx - 220} ${by + 30}" stroke="#00f2fe" stroke-width="24" fill="none" stroke-linecap="round"/>
-        <circle cx="${bx - 220}" cy="${by + 30}" r="20" fill="#39ff14" filter="drop-shadow(0 0 10px #39ff14)"/>
-      `;
-    }
-    if (byteAction.includes('ride') || byteAction.includes('packet')) {
-      actionOverlays += `
-        <!-- Hoverboard under Byte -->
-        <ellipse cx="${bx}" cy="${by + 220}" rx="160" ry="25" fill="#39ff14" opacity="0.9" filter="drop-shadow(0 0 15px #39ff14)"/>
-        <path d="M ${bx - 120} ${by + 230} L ${bx - 160} ${by + 210}" stroke="#39ff14" stroke-width="8" stroke-linecap="round"/>
-        <path d="M ${bx + 120} ${by + 230} L ${bx + 160} ${by + 210}" stroke="#39ff14" stroke-width="8" stroke-linecap="round"/>
-      `;
-    }
-    if (emotion === 'panic' || emotion === 'confused' || emotion === 'shocked') {
-      actionOverlays += `
-        <!-- Panic exclamation mark -->
-        <g transform="translate(${bx + 120}, ${by - 200})">
-          <circle cx="0" cy="0" r="28" fill="#ff3366" filter="drop-shadow(0 0 8px #ff3366)"/>
-          <text x="0" y="15" fill="#ffffff" font-family="'Outfit', sans-serif" font-size="44" font-weight="900" text-anchor="middle">!</text>
+    if (isShocked) {
+      // Wide-open eyes, round "O" mouth
+      byteEyesPath = `
+        <ellipse cx="-32" cy="-48" rx="22" ry="26" fill="#fff" stroke="#000" stroke-width="4"/>
+        <circle cx="-32" cy="-44" r="10" fill="#1a1a1a"/>
+        <ellipse cx="32" cy="-48" rx="22" ry="26" fill="#fff" stroke="#000" stroke-width="4"/>
+        <circle cx="32" cy="-44" r="10" fill="#1a1a1a"/>`;
+      byteMouthPath = `<ellipse cx="0" cy="-10" rx="16" ry="20" fill="#cc0000" stroke="#000" stroke-width="3"/>`;
+      // Shock lines radiating from head
+      byteExtras = `
+        <g stroke="${accentColor}" stroke-width="5" stroke-linecap="round" opacity="0.85">
+          <line x1="-90" y1="-120" x2="-120" y2="-155"/>
+          <line x1="0" y1="-130" x2="0" y2="-170"/>
+          <line x1="90" y1="-120" x2="120" y2="-155"/>
+          <line x1="-110" y1="-60" x2="-150" y2="-60"/>
+          <line x1="110" y1="-60" x2="150" y2="-60"/>
         </g>
-      `;
+        <!-- Comic exclamation bubble -->
+        <g transform="translate(80, -170)">
+          <circle cx="0" cy="0" r="30" fill="${accentColor2}" stroke="#000" stroke-width="5"/>
+          <text x="0" y="12" fill="#000" font-family="Impact, Arial Black, sans-serif" font-size="36" font-weight="900" text-anchor="middle">!</text>
+        </g>`;
+    } else if (isConfused) {
+      // Squiggly eyes (one normal, one X-shaped), slanted mouth
+      byteEyesPath = `
+        <ellipse cx="-32" cy="-48" rx="18" ry="20" fill="#fff" stroke="#000" stroke-width="4"/>
+        <circle cx="-32" cy="-44" r="8" fill="#1a1a1a"/>
+        <!-- X eye (confused) -->
+        <line x1="20" y1="-65" x2="44" y2="-33" stroke="#000" stroke-width="6" stroke-linecap="round"/>
+        <line x1="44" y1="-65" x2="20" y2="-33" stroke="#000" stroke-width="6" stroke-linecap="round"/>`;
+      byteMouthPath = `<path d="M -18 -8 Q 0 -18 18 -5" stroke="#000" stroke-width="5" fill="none" stroke-linecap="round"/>`;
+      // Sweat drop + question mark
+      byteExtras = `
+        <g transform="translate(90, -160)">
+          <circle cx="0" cy="0" r="28" fill="${accentColor}" stroke="#000" stroke-width="4"/>
+          <text x="0" y="10" fill="#000" font-family="Impact, Arial Black, sans-serif" font-size="30" font-weight="900" text-anchor="middle">?</text>
+        </g>
+        <!-- Sweat drop -->
+        <ellipse cx="-90" cy="-80" rx="10" ry="14" fill="#00aaff" stroke="#000" stroke-width="3" transform="rotate(20 -90 -80)"/>`;
+    } else {
+      // Happy/curious eyes
+      byteEyesPath = `
+        <ellipse cx="-32" cy="-48" rx="18" ry="20" fill="#fff" stroke="#000" stroke-width="4"/>
+        <circle cx="-32" cy="-44" r="8" fill="#1a1a1a"/>
+        <circle cx="-26" cy="-48" r="4" fill="#fff"/>
+        <ellipse cx="32" cy="-48" rx="18" ry="20" fill="#fff" stroke="#000" stroke-width="4"/>
+        <circle cx="32" cy="-44" r="8" fill="#1a1a1a"/>
+        <circle cx="38" cy="-48" r="4" fill="#fff"/>`;
+      byteMouthPath = `<path d="M -16 -6 Q 0 8 16 -6" stroke="#000" stroke-width="5" fill="none" stroke-linecap="round"/>`;
     }
 
-    const byteTransform = `translate(${byteX - bx}, ${byteY - by}) scale(${byteScale}) rotate(${byteRot}, ${bx}, ${by})`;
+    // Motion streaks under feet if running
+    const byteMotion = (byteAction.includes('run') || byteAction.includes('jump'))
+      ? `<g stroke="${accentColor}" stroke-width="4" opacity="0.5" stroke-linecap="round">
+          <line x1="-80" y1="200" x2="-180" y2="200"/>
+          <line x1="-60" y1="220" x2="-160" y2="220"/>
+          <line x1="-70" y1="240" x2="-140" y2="240"/>
+        </g>` : '';
 
     byteSvg = `
-      <!-- BYTE MASCOT -->
-      <g transform="${byteTransform}">
-        <ellipse cx="${bx}" cy="${by + 210}" rx="130" ry="24" fill="rgba(0,0,0,0.5)" filter="blur(8px)"/>
-        <rect x="${bx - 120}" y="${by - 40}" width="240" height="200" rx="40" fill="url(#byteBodyGrad)" stroke="rgba(255,255,255,0.1)" stroke-width="4"/>
-        <rect x="${bx - 70}" y="${by + 10}" width="140" height="90" rx="16" fill="rgba(10, 25, 47, 0.7)" stroke="#00f2fe" stroke-width="2"/>
-        <text x="${bx}" y="${by + 60}" fill="#39ff14" font-family="monospace" font-size="28" font-weight="bold" text-anchor="middle">&lt; OK &gt;</text>
-        <rect x="${bx - 40}" y="${by - 75}" width="80" height="40" rx="10" fill="#1f2937"/>
-        <rect x="${bx - 140}" y="${by - 210}" width="280" height="150" rx="60" fill="url(#byteHeadGrad)" stroke="rgba(255,255,255,0.06)" stroke-width="4"/>
-        <rect x="${bx - 110}" y="${by - 180}" width="220" height="100" rx="40" fill="#030712" stroke="rgba(0, 242, 254, 0.3)" stroke-width="3"/>
-        ${byteEyes}
-        ${byteMouth}
-        <line x1="${bx}" y1="${by - 210}" x2="${bx}" y2="${by - 250}" stroke="#00f2fe" stroke-width="8" stroke-linecap="round"/>
-        <circle cx="${bx}" cy="${by - 260}" r="15" fill="#39ff14" filter="drop-shadow(0 0 10px #39ff14)"/>
-        ${actionOverlays}
+    <!-- ======= BYTE (Blue Hoodie Human) ======= -->
+    <g transform="translate(${byteX}, ${byteY})" filter="drop-shadow(0 8px 24px rgba(0,170,255,0.4))">
+      <!-- Ground shadow -->
+      <ellipse cx="0" cy="220" rx="90" ry="18" fill="rgba(0,0,0,0.5)" filter="blur(8px)"/>
+
+      ${byteMotion}
+
+      <!-- LEGS -->
+      <rect x="-42" y="120" width="36" height="100" rx="16" fill="#334a6b" stroke="#000" stroke-width="5"/>
+      <rect x="10" y="120" width="36" height="100" rx="16" fill="#334a6b" stroke="#000" stroke-width="5"/>
+      <!-- Shoes -->
+      <ellipse cx="-24" cy="220" rx="32" ry="14" fill="#1a1a1a" stroke="#000" stroke-width="4"/>
+      <ellipse cx="28" cy="220" rx="32" ry="14" fill="#1a1a1a" stroke="#000" stroke-width="4"/>
+
+      <!-- BODY (blue hoodie) -->
+      <rect x="-70" y="-20" width="140" height="150" rx="30" fill="#0088dd" stroke="#000" stroke-width="7"/>
+      <!-- Hoodie pocket -->
+      <rect x="-35" y="80" width="70" height="45" rx="12" fill="rgba(0,0,0,0.2)" stroke="#000" stroke-width="4"/>
+      <!-- Hoodie draw strings -->
+      <line x1="-12" y1="0" x2="-18" y2="50" stroke="#fff" stroke-width="3" opacity="0.5"/>
+      <line x1="12" y1="0" x2="18" y2="50" stroke="#fff" stroke-width="3" opacity="0.5"/>
+
+      <!-- ARMS -->
+      <rect x="-120" y="-10" width="55" height="30" rx="14" fill="#0088dd" stroke="#000" stroke-width="6" transform="rotate(30 -92 5)"/>
+      <rect x="68" y="-10" width="55" height="30" rx="14" fill="#0088dd" stroke="#000" stroke-width="6" transform="rotate(-20 95 5)"/>
+      <!-- Hands -->
+      <circle cx="-130" cy="50" r="22" fill="#f0c896" stroke="#000" stroke-width="5"/>
+      <circle cx="130" cy="40" r="22" fill="#f0c896" stroke="#000" stroke-width="5"/>
+
+      <!-- NECK -->
+      <rect x="-18" y="-90" width="36" height="50" rx="10" fill="#f0c896" stroke="#000" stroke-width="4"/>
+
+      <!-- HEAD -->
+      <ellipse cx="0" cy="-135" rx="75" ry="80" fill="#f0c896" stroke="#000" stroke-width="7"/>
+
+      <!-- BLACK MESSY HAIR -->
+      <ellipse cx="0" cy="-205" rx="78" ry="50" fill="#1a1a1a" stroke="#000" stroke-width="4"/>
+      <!-- Hair tufts -->
+      <ellipse cx="-55" cy="-195" rx="30" ry="35" fill="#1a1a1a" stroke="#000" stroke-width="3"/>
+      <ellipse cx="55" cy="-190" rx="28" ry="30" fill="#1a1a1a" stroke="#000" stroke-width="3"/>
+      <ellipse cx="20" cy="-225" rx="22" ry="28" fill="#1a1a1a" stroke="#000" stroke-width="3"/>
+      <ellipse cx="-20" cy="-228" rx="18" ry="24" fill="#1a1a1a" stroke="#000" stroke-width="3"/>
+
+      <!-- FACE: Eyes -->
+      <g transform="translate(0, -135)">
+        ${byteEyesPath}
+        ${byteMouthPath}
+        ${byteExtras}
+        <!-- Blush marks -->
+        <ellipse cx="-55" cy="-20" rx="16" ry="10" fill="#ff8faa" opacity="0.45"/>
+        <ellipse cx="55" cy="-20" rx="16" ry="10" fill="#ff8faa" opacity="0.45"/>
       </g>
-    `;
+    </g>`;
   }
 
-  // Bug mascot builder
-  if (drawBug && bugData) {
-    const gx = 780;
-    const gy = 1180;
-    const emotion = bugData.emotion.toLowerCase();
+  // ==========================================================================
+  // 5. BUG CHARACTER SVG (Red hoodie human with antenna)
+  // ==========================================================================
+  let bugSvg = '';
+  if (drawBug) {
+    const isConfident = bugEmotion === 'confident' || bugEmotion === 'explaining';
+    const isDramatic = bugEmotion === 'dramatic' || bugEmotion === 'sarcastic';
+    const isFunny = bugEmotion === 'funny' || bugEmotion === 'excited';
 
-    let bugEyes = `<circle cx="${gx - 30}" cy="${gy - 90}" r="22" fill="#ffffff" stroke="#052e16" stroke-width="4"/>
-                   <circle cx="${gx - 30}" cy="${gy - 90}" r="8" fill="#000000"/>
-                   <circle cx="${gx + 30}" cy="${gy - 90}" r="22" fill="#ffffff" stroke="#052e16" stroke-width="4"/>
-                   <circle cx="${gx + 30}" cy="${gy - 90}" r="8" fill="#000000"/>`;
-    let bugMouth = `<path d="M ${gx - 10} ${gy - 45} Q ${gx} ${gy - 38} ${gx + 10} ${gy - 45}" stroke="#052e16" stroke-width="5" fill="none" stroke-linecap="round"/>`;
+    let bugEyesPath = '';
+    let bugMouthPath = '';
+    let bugExtras = '';
 
-    if (emotion === 'shock' || emotion === 'surprised' || emotion === 'shocked' || emotion === 'panic') {
-      bugEyes = `<circle cx="${gx - 30}" cy="${gy - 95}" r="28" fill="#ffffff" stroke="#052e16" stroke-width="4"/>
-                 <circle cx="${gx - 30}" cy="${gy - 95}" r="12" fill="#000000"/>
-                 <circle cx="${gx + 30}" cy="${gy - 95}" r="28" fill="#ffffff" stroke="#052e16" stroke-width="4"/>
-                 <circle cx="${gx + 30}" cy="${gy - 95}" r="12" fill="#000000"/>`;
-      bugMouth = `<ellipse cx="${gx}" cy="${gy - 42}" rx="14" ry="18" fill="#052e16"/>`;
-    } else if (emotion === 'confused') {
-      bugEyes = `<path d="M ${gx - 45} ${gy - 105} Q ${gx - 30} ${gy - 80} ${gx - 15} ${gy - 105}" stroke="#052e16" stroke-width="6" fill="none" stroke-linecap="round"/>
-                 <path d="M ${gx + 15} ${gy - 105} Q ${gx + 30} ${gy - 80} ${gx + 45} ${gy - 105}" stroke="#052e16" stroke-width="6" fill="none" stroke-linecap="round"/>`;
-      bugMouth = `<path d="M ${gx - 15} ${gy - 45} L ${gx + 15} ${gy - 45}" stroke="#052e16" stroke-width="5"/>`;
+    if (isConfident || isFunny) {
+      // Half-closed confident eyes, wide grin
+      bugEyesPath = `
+        <path d="M -50 -60 Q -32 -72 -14 -60" stroke="#000" stroke-width="7" fill="none" stroke-linecap="round"/>
+        <ellipse cx="-32" cy="-48" rx="16" ry="14" fill="#fff" stroke="#000" stroke-width="4"/>
+        <circle cx="-32" cy="-44" r="7" fill="#1a1a1a"/>
+        <path d="M 14 -60 Q 32 -72 50 -60" stroke="#000" stroke-width="7" fill="none" stroke-linecap="round"/>
+        <ellipse cx="32" cy="-48" rx="16" ry="14" fill="#fff" stroke="#000" stroke-width="4"/>
+        <circle cx="32" cy="-44" r="7" fill="#1a1a1a"/>`;
+      bugMouthPath = `
+        <!-- Big confident grin -->
+        <path d="M -30 -10 Q 0 18 30 -10" stroke="#000" stroke-width="6" fill="#fff" stroke-linecap="round"/>
+        <!-- Teeth -->
+        <path d="M -28 -10 Q 0 16 28 -10" stroke="none" fill="#fff"/>`;
+    } else if (isDramatic) {
+      // Squinted dramatic eyes, smug mouth
+      bugEyesPath = `
+        <path d="M -50 -52 Q -32 -64 -14 -52" stroke="#000" stroke-width="7" fill="none" stroke-linecap="round"/>
+        <path d="M 14 -52 Q 32 -64 50 -52" stroke="#000" stroke-width="7" fill="none" stroke-linecap="round"/>`;
+      bugMouthPath = `<path d="M -20 -5 Q 0 0 20 -10" stroke="#000" stroke-width="5" fill="none" stroke-linecap="round"/>`;
+      // Dramatic sweat or sparkle
+      bugExtras = `
+        <g transform="translate(95, -150)" filter="drop-shadow(0 0 6px ${accentColor})">
+          <polygon points="0,-30 6,-10 28,-10 11,2 18,24 0,12 -18,24 -11,2 -28,-10 -6,-10" fill="${accentColor2}" stroke="#000" stroke-width="3"/>
+        </g>`;
+    } else {
+      bugEyesPath = `
+        <ellipse cx="-32" cy="-48" rx="18" ry="20" fill="#fff" stroke="#000" stroke-width="4"/>
+        <circle cx="-32" cy="-44" r="8" fill="#1a1a1a"/>
+        <ellipse cx="32" cy="-48" rx="18" ry="20" fill="#fff" stroke="#000" stroke-width="4"/>
+        <circle cx="32" cy="-44" r="8" fill="#1a1a1a"/>`;
+      bugMouthPath = `<path d="M -16 -6 Q 0 8 16 -6" stroke="#000" stroke-width="5" fill="none" stroke-linecap="round"/>`;
     }
 
-    let actionOverlays = '';
-    // Trapped capsule overlay
-    if (bugAction.includes('trap') || bugAction.includes('inside')) {
-      actionOverlays += `
-        <!-- Glass containment capsule trapped Bug -->
-        <rect x="${gx - 140}" y="${gy - 220}" width="280" height="430" rx="140" fill="rgba(0, 242, 254, 0.08)" stroke="#ff3366" stroke-width="8" stroke-dasharray="12, 6" filter="drop-shadow(0 0 20px #ff3366)"/>
-        <text x="${gx}" y="${gy - 240}" fill="#ff3366" font-family="'Outfit', sans-serif" font-size="28" font-weight="900" text-anchor="middle" filter="drop-shadow(0 0 5px #ff3366)">LOCKED</text>
-      `;
-    }
-    if (bugAction.includes('fall') || bugAction.includes('drop')) {
-      actionOverlays += `
-        <!-- Sweat bubbles and speed trails -->
-        <path d="M ${gx - 80} ${gy - 120} Q ${gx - 100} ${gy - 100} ${gx - 80} ${gy - 80}" fill="none" stroke="#00f2fe" stroke-width="5" stroke-linecap="round"/>
-        <path d="M ${gx + 80} ${gy - 120} Q ${gx + 100} ${gy - 100} ${gx + 80} ${gy - 80}" fill="none" stroke="#00f2fe" stroke-width="5" stroke-linecap="round"/>
-      `;
-    }
-    if (bugAction.includes('celebrate') || bugAction.includes('jump')) {
-      actionOverlays += `
-        <!-- Celebrating sparkles -->
-        <path d="M ${gx - 110} ${gy - 180} L ${gx - 90} ${gy - 150} L ${gx - 60} ${gy - 140} L ${gx - 90} ${gy - 130} L ${gx - 100} ${gy - 100} Z" fill="#ffdf00"/>
-        <path d="M ${gx + 110} ${gy - 180} L ${gx + 90} ${gy - 150} L ${gx + 60} ${gy - 140} L ${gx + 90} ${gy - 130} L ${gx + 100} ${gy - 100} Z" fill="#ffdf00"/>
-      `;
+    // Pointing arm if explaining
+    let pointingArm = '';
+    if (input.speaker === 'Bug' || bugAction.includes('point') || bugAction.includes('explain')) {
+      pointingArm = `
+        <!-- Extended pointing arm -->
+        <rect x="${input.speaker === 'Bug' ? '-180' : '70'}" y="-5" width="115" height="28" rx="14" fill="#cc2200" stroke="#000" stroke-width="6" transform="rotate(${input.speaker === 'Bug' ? '-15' : '15'} ${input.speaker === 'Bug' ? '-120' : '130'} 9)"/>
+        <circle cx="${input.speaker === 'Bug' ? '-195' : '195'}" cy="30" r="22" fill="#f0c896" stroke="#000" stroke-width="5"/>`;
     }
 
-    const bugTransform = `translate(${bugX - gx}, ${bugY - gy}) scale(${bugScale}) rotate(${bugRot}, ${gx}, ${gy})`;
+    const bugMotion = (bugAction.includes('run') || bugAction.includes('jump'))
+      ? `<g stroke="${accentColor}" stroke-width="4" opacity="0.5" stroke-linecap="round">
+          <line x1="80" y1="200" x2="180" y2="200"/>
+          <line x1="60" y1="220" x2="160" y2="220"/>
+        </g>` : '';
 
     bugSvg = `
-      <!-- BUG MASCOT -->
-      <g transform="${bugTransform}">
-        <ellipse cx="${gx}" cy="${gy + 160}" rx="90" ry="18" fill="rgba(0,0,0,0.5)" filter="blur(6px)"/>
-        <ellipse cx="${gx - 65}" cy="${gy - 10}" rx="45" ry="70" fill="rgba(255,255,255,0.4)" stroke="rgba(255,255,255,0.6)" stroke-width="2" transform="rotate(-15, ${gx - 65}, ${gy - 10})"/>
-        <ellipse cx="${gx + 65}" cy="${gy - 10}" rx="45" ry="70" fill="rgba(255,255,255,0.4)" stroke="rgba(255,255,255,0.6)" stroke-width="2" transform="rotate(15, ${gx + 65}, ${gy - 10})"/>
-        <rect x="${gx - 62}" y="${gy - 10}" width="124" height="24" rx="8" fill="#fbbf24" stroke="#052e16" stroke-width="2"/>
-        <ellipse cx="${gx}" cy="${gy + 40}" rx="80" ry="100" fill="url(#bugBodyGrad)" stroke="#052e16" stroke-width="4"/>
-        <line x1="${gx - 40}" y1="${gy + 130}" x2="${gx - 55}" y2="${gy + 160}" stroke="#052e16" stroke-width="6" stroke-linecap="round"/>
-        <line x1="${gx + 40}" y1="${gy + 130}" x2="${gx + 55}" y2="${gy + 160}" stroke="#052e16" stroke-width="6" stroke-linecap="round"/>
-        <circle cx="${gx}" cy="${gy - 60}" r="65" fill="url(#bugHeadGrad)" stroke="#052e16" stroke-width="4"/>
-        ${bugEyes}
-        ${bugMouth}
-        <path d="M ${gx - 20} ${gy - 120} Q ${gx - 40} ${gy - 160} ${gx - 60} ${gy - 150}" fill="none" stroke="#052e16" stroke-width="6" stroke-linecap="round"/>
-        <circle cx="${gx - 60}" cy="${gy - 150}" r="8" fill="#fbbf24"/>
-        <path d="M ${gx + 20} ${gy - 120} Q ${gx + 40} ${gy - 160} ${gx + 60} ${gy - 150}" fill="none" stroke="#052e16" stroke-width="6" stroke-linecap="round"/>
-        <circle cx="${gx + 60}" cy="${gy - 150}" r="8" fill="#fbbf24"/>
-        ${actionOverlays}
+    <!-- ======= BUG (Red Hoodie Human with Antenna) ======= -->
+    <g transform="translate(${bugX}, ${bugY})" filter="drop-shadow(0 8px 24px rgba(255,59,59,0.4))">
+      <!-- Ground shadow -->
+      <ellipse cx="0" cy="220" rx="90" ry="18" fill="rgba(0,0,0,0.5)" filter="blur(8px)"/>
+
+      ${bugMotion}
+
+      <!-- LEGS -->
+      <rect x="-42" y="120" width="36" height="100" rx="16" fill="#660000" stroke="#000" stroke-width="5"/>
+      <rect x="10" y="120" width="36" height="100" rx="16" fill="#660000" stroke="#000" stroke-width="5"/>
+      <!-- Shoes -->
+      <ellipse cx="-24" cy="220" rx="32" ry="14" fill="#1a1a1a" stroke="#000" stroke-width="4"/>
+      <ellipse cx="28" cy="220" rx="32" ry="14" fill="#1a1a1a" stroke="#000" stroke-width="4"/>
+
+      <!-- BODY (red hoodie) -->
+      <rect x="-70" y="-20" width="140" height="150" rx="30" fill="#cc2200" stroke="#000" stroke-width="7"/>
+      <!-- Hoodie pocket -->
+      <rect x="-35" y="80" width="70" height="45" rx="12" fill="rgba(0,0,0,0.2)" stroke="#000" stroke-width="4"/>
+      <!-- Hoodie draw strings -->
+      <line x1="-12" y1="0" x2="-18" y2="50" stroke="#fff" stroke-width="3" opacity="0.5"/>
+      <line x1="12" y1="0" x2="18" y2="50" stroke="#fff" stroke-width="3" opacity="0.5"/>
+
+      <!-- ARMS -->
+      <rect x="-120" y="-10" width="55" height="30" rx="14" fill="#cc2200" stroke="#000" stroke-width="6" transform="rotate(25 -92 5)"/>
+      ${pointingArm || `<rect x="68" y="-10" width="55" height="30" rx="14" fill="#cc2200" stroke="#000" stroke-width="6" transform="rotate(-25 95 5)"/>
+      <circle cx="130" cy="40" r="22" fill="#f0c896" stroke="#000" stroke-width="5"/>`}
+      <circle cx="-130" cy="45" r="22" fill="#f0c896" stroke="#000" stroke-width="5"/>
+
+      <!-- NECK -->
+      <rect x="-18" y="-90" width="36" height="50" rx="10" fill="#f0c896" stroke="#000" stroke-width="4"/>
+
+      <!-- HEAD -->
+      <ellipse cx="0" cy="-135" rx="75" ry="80" fill="#f0c896" stroke="#000" stroke-width="7"/>
+
+      <!-- HOODIE HOOD (on head, red) -->
+      <path d="M -75 -155 Q -80 -240 0 -250 Q 80 -240 75 -155" fill="#cc2200" stroke="#000" stroke-width="6"/>
+
+      <!-- BUG ANTENNA on hood -->
+      <line x1="0" y1="-215" x2="0" y2="-285" stroke="#1a1a1a" stroke-width="6" stroke-linecap="round"/>
+      <circle cx="0" cy="-295" r="14" fill="${accentColor}" stroke="#000" stroke-width="5" filter="drop-shadow(0 0 8px ${accentColor})"/>
+
+      <!-- FACE: Eyes -->
+      <g transform="translate(0, -135)">
+        ${bugEyesPath}
+        ${bugMouthPath}
+        ${bugExtras}
+        <!-- Cheek blush -->
+        <ellipse cx="-58" cy="-15" rx="16" ry="10" fill="#ff8888" opacity="0.35"/>
+        <ellipse cx="58" cy="-15" rx="16" ry="10" fill="#ff8888" opacity="0.35"/>
       </g>
-    `;
+    </g>`;
   }
 
-  // 5. Camera Transform grouping
-  const cameraShot = (camera.shot || 'wide').toLowerCase();
-  let cameraTransform = 'translate(0, 0) scale(1)';
-
-  if (cameraShot.includes('close')) {
-    const focusX = input.speaker === 'Bug' ? bugX : byteX;
-    const focusY = input.speaker === 'Bug' ? bugY : byteY;
-    cameraTransform = `translate(${540 - focusX * 1.8}, ${960 - focusY * 1.8}) scale(1.8)`;
-  } else if (cameraShot.includes('medium')) {
-    const midX = (byteX + bugX) / 2;
-    const midY = (byteY + bugY) / 2;
-    cameraTransform = `translate(${540 - midX * 1.3}, ${960 - midY * 1.3}) scale(1.3)`;
-  } else if (cameraShot.includes('overhead')) {
-    cameraTransform = `translate(54, 192) scale(0.9)`;
-  } else if (cameraShot.includes('pov')) {
-    const focusX = input.speaker === 'Bug' ? byteX : bugX;
-    const focusY = input.speaker === 'Bug' ? byteY : bugY;
-    cameraTransform = `translate(${540 - focusX * 2.0}, ${960 - focusY * 2.0}) scale(2.0)`;
-  }
-
-  // Generate HUD overlay labels
-  const overlayLabels = `
-    <!-- CINEMATIC HUD -->
-    <rect x="50" y="50" width="980" height="140" rx="20" fill="rgba(15, 18, 28, 0.72)" stroke="rgba(255,255,255,0.06)" stroke-width="2" filter="backdrop-filter(blur(10px))"/>
-    
-    <text x="80" y="105" fill="#8b949e" font-family="'Outfit', sans-serif" font-size="20" font-weight="700" letter-spacing="1">STORY BEAT</text>
-    <text x="80" y="145" fill="#ffffff" font-family="'Outfit', sans-serif" font-size="32" font-weight="900" letter-spacing="0.5">${input.storyBeat.toUpperCase()}</text>
-    
-    <text x="360" y="105" fill="#8b949e" font-family="'Outfit', sans-serif" font-size="20" font-weight="700" letter-spacing="1">ENVIRONMENT</text>
-    <text x="360" y="145" fill="${accentColor}" font-family="'Outfit', sans-serif" font-size="28" font-weight="900" letter-spacing="0.5">${envLabelText.toUpperCase()}</text>
-    
-    <text x="820" y="105" fill="#8b949e" font-family="'Outfit', sans-serif" font-size="20" font-weight="700" letter-spacing="1">CAMERA SHOT</text>
-    <text x="820" y="145" fill="#ffffff" font-family="'Outfit', sans-serif" font-size="28" font-weight="900" letter-spacing="0.5">${camera.shot.toUpperCase()}</text>
+  // ==========================================================================
+  // 6. CINEMATIC HUD OVERLAY
+  // ==========================================================================
+  const hudOverlay = `
+    <!-- Scene info HUD (top area) -->
+    <rect x="40" y="40" width="1000" height="110" rx="18" fill="rgba(8,10,20,0.82)" stroke="rgba(255,255,255,0.08)" stroke-width="2"/>
+    <text x="70" y="85" fill="rgba(255,255,255,0.4)" font-family="'Outfit', Impact, sans-serif" font-size="18" font-weight="700" letter-spacing="2">ENV</text>
+    <text x="70" y="122" fill="${accentColor}" font-family="'Outfit', Impact, sans-serif" font-size="28" font-weight="900" letter-spacing="1">${envLabel}</text>
+    <text x="520" y="85" fill="rgba(255,255,255,0.4)" font-family="'Outfit', Impact, sans-serif" font-size="18" font-weight="700" letter-spacing="2">SPEAKER</text>
+    <text x="520" y="122" fill="${input.speaker === 'Bug' ? '#ff3b3b' : '#00aaff'}" font-family="'Outfit', Impact, sans-serif" font-size="28" font-weight="900" letter-spacing="1">${input.speaker.toUpperCase()}</text>
+    <text x="820" y="85" fill="rgba(255,255,255,0.4)" font-family="'Outfit', Impact, sans-serif" font-size="18" font-weight="700" letter-spacing="2">BEAT</text>
+    <text x="820" y="122" fill="#fff" font-family="'Outfit', Impact, sans-serif" font-size="28" font-weight="900" letter-spacing="1">${input.storyBeat.toUpperCase()}</text>
   `;
 
   return `
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1920" width="100%" height="100%">
       <defs>
-        <!-- Background Gradient -->
         <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stop-color="${bgGradientStart}"/>
-          <stop offset="100%" stop-color="${bgGradientEnd}"/>
+          <stop offset="0%" stop-color="${bgColor1}"/>
+          <stop offset="100%" stop-color="${bgColor2}"/>
         </linearGradient>
-        
-        <!-- Byte Robot Gradients -->
-        <linearGradient id="byteHeadGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stop-color="#1e293b"/>
-          <stop offset="100%" stop-color="#0f172a"/>
-        </linearGradient>
-        <linearGradient id="byteBodyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stop-color="#00f2fe"/>
-          <stop offset="100%" stop-color="#4facfe"/>
-        </linearGradient>
-        
-        <!-- Bug Gradients -->
-        <linearGradient id="bugHeadGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stop-color="#86efac"/>
-          <stop offset="100%" stop-color="#22c55e"/>
-        </linearGradient>
-        <linearGradient id="bugBodyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stop-color="#22c55e"/>
-          <stop offset="100%" stop-color="#15803d"/>
-        </linearGradient>
-        
-        <!-- Grid Filter pattern -->
-        <pattern id="gridPattern" width="90" height="90" patternUnits="userSpaceOnUse">
-          <path d="M 90 0 L 0 0 0 90" fill="none" stroke="${gridColor}" stroke-width="2"/>
-        </pattern>
       </defs>
-      
-      <!-- Base Background (always full screen) -->
-      <rect width="1080" height="1920" fill="url(#bgGrad)"/>
-      <rect width="1080" height="1920" fill="url(#gridPattern)"/>
-      
-      <!-- Spotlight -->
-      <circle cx="540" cy="960" r="800" fill="radial-gradient(circle, rgba(255,255,255,0.03) 0%, transparent 80%)" opacity="0.3"/>
 
-      <!-- Camera viewport grouping (Apply zooms / tilts here) -->
-      <g transform="${cameraTransform}">
-        <!-- 1. Environment Elements -->
-        ${environmentSvg}
-        
-        <!-- 2. Character SVG Models -->
-        ${byteSvg}
-        ${bugSvg}
-      </g>
-      
-      <!-- 3. Cinematic Overlay HUD -->
-      ${overlayLabels}
+      <!-- Base background -->
+      <rect width="1080" height="1920" fill="url(#bgGrad)"/>
+
+      <!-- Environment elements -->
+      ${environmentSvg}
+
+      <!-- Characters -->
+      ${byteSvg}
+      ${bugSvg}
+
+      <!-- HUD overlay -->
+      ${hudOverlay}
     </svg>
   `;
 }

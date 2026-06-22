@@ -141,6 +141,8 @@ export async function runContentPipeline(projectId: string, topic: string, serie
       where: { projectId },
       update: {
         title: scriptResult.title,
+        youtubeTitle: scriptResult.youtubeTitle || scriptResult.title,
+        youtubeDescription: scriptResult.youtubeDescription || `${scriptResult.hook}\n\n${scriptResult.cta}`,
         hook: scriptResult.hook,
         body: scriptResult.dialogue.map(t => `${t.speaker}: ${t.text}`).join('\n'),
         cta: scriptResult.cta,
@@ -149,6 +151,8 @@ export async function runContentPipeline(projectId: string, topic: string, serie
       create: {
         projectId,
         title: scriptResult.title,
+        youtubeTitle: scriptResult.youtubeTitle || scriptResult.title,
+        youtubeDescription: scriptResult.youtubeDescription || `${scriptResult.hook}\n\n${scriptResult.cta}`,
         hook: scriptResult.hook,
         body: scriptResult.dialogue.map(t => `${t.speaker}: ${t.text}`).join('\n'),
         cta: scriptResult.cta,
@@ -220,7 +224,8 @@ export async function runContentPipeline(projectId: string, topic: string, serie
           camera: scene.camera,
           speaker: scene.speaker,
           dialogue: scene.dialogue,
-          templateProps: scene.templateProps
+          templateProps: scene.templateProps,
+          stylePack
         },
         apiKey,
         outputsDir
@@ -309,12 +314,46 @@ export async function runContentPipeline(projectId: string, topic: string, serie
       
       const sceneData = JSON.parse(scene.templateData);
       const speakerName = sceneData.storyState?.speaker || 'Byte';
-      const voice = speakerName === 'Bug' ? 'en-US-EmmaNeural' : 'en-US-AndrewNeural';
+      const emotion = (sceneData.characters?.[0]?.emotion || 'neutral').toLowerCase();
+
+      // BUG = male tech expert → AndrewNeural (energetic, confident male voice)
+      // BYTE = curious learner → EmmaNeural (warm, expressive female voice)
+      const voice = speakerName === 'Bug' ? 'en-US-AndrewNeural' : 'en-US-EmmaNeural';
+
+      // Emotion-aware SSML prosody for expression matching
+      // Shocked/excited: faster rate, higher pitch, louder
+      // Sarcastic/dramatic: slightly slower, flatter pitch
+      // Confident/explaining: clear pace, full volume
+      let prosodyRate = '+0%';
+      let prosodyPitch = '+0Hz';
+      let prosodyVolume = '+10%'; // baseline boost for clarity
+
+      if (speakerName === 'Byte') {
+        // Byte: audience surrogate — emotional, reactive
+        if (emotion === 'shocked' || emotion === 'surprised') {
+          prosodyRate = '+18%'; prosodyPitch = '+4Hz'; prosodyVolume = '+15%';
+        } else if (emotion === 'confused') {
+          prosodyRate = '-8%'; prosodyPitch = '+2Hz'; prosodyVolume = '+10%';
+        } else if (emotion === 'excited' || emotion === 'curious') {
+          prosodyRate = '+12%'; prosodyPitch = '+3Hz'; prosodyVolume = '+12%';
+        }
+      } else {
+        // Bug: confident expert — controlled, punchy, expressive
+        if (emotion === 'sarcastic') {
+          prosodyRate = '-10%'; prosodyPitch = '-2Hz'; prosodyVolume = '+10%';
+        } else if (emotion === 'dramatic') {
+          prosodyRate = '-5%'; prosodyPitch = '-1Hz'; prosodyVolume = '+15%';
+        } else if (emotion === 'confident' || emotion === 'explaining') {
+          prosodyRate = '+5%'; prosodyPitch = '+0Hz'; prosodyVolume = '+12%';
+        } else if (emotion === 'excited') {
+          prosodyRate = '+15%'; prosodyPitch = '+2Hz'; prosodyVolume = '+15%';
+        }
+      }
 
       // Extract actual dialogue text to prevent voice synthesis from reading character prefix name
       const dialogueText = (sceneData.storyState?.dialogue || scene.text || '').replace(/^(Byte|Bug):\s*/i, '');
-      console.log(`Generating speech for ${speakerName} in scene ${scene.sequenceNumber}: "${dialogueText}"`);
-      const ttsResult = await generateEdgeTTS(dialogueText, sceneAudioPath, voice);
+      console.log(`🎙 [TTS] ${speakerName} (${voice} | ${emotion}) Scene ${scene.sequenceNumber}: "${dialogueText.slice(0, 60)}..."`);
+      const ttsResult = await generateEdgeTTS(dialogueText, sceneAudioPath, voice, prosodyRate, prosodyPitch, prosodyVolume);
 
       // Update the scene database row
       await prisma.scene.update({

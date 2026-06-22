@@ -66,7 +66,10 @@ function getJavascriptDateString(): string {
 export function generateEdgeTTS(
   text: string,
   outputPath: string,
-  voice: string = 'en-US-AndrewNeural'
+  voice: string = 'en-US-AndrewNeural',
+  prosodyRate: string = '+0%',
+  prosodyPitch: string = '+0Hz',
+  prosodyVolume: string = '+10%'
 ): Promise<AudioTTSResult> {
   return new Promise((resolve, reject) => {
     const connectionId = uuidv4().replace(/-/g, '').toUpperCase();
@@ -91,12 +94,12 @@ export function generateEdgeTTS(
     ws.on('open', () => {
       // 1. Send speech.config message
       const timestamp = getJavascriptDateString();
-      const configMessage = `X-Timestamp:${timestamp}\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n{"context":{"synthesis":{"audio":{"metadataoptions":{"sentenceBoundaryEnabled":"false","wordBoundaryEnabled":"true"},"outputFormat":"audio-24khz-48kbitrate-mono-mp3"}}}}`;
+      const configMessage = `X-Timestamp:${timestamp}\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n{"context":{"synthesis":{"audio":{"metadataoptions":{"sentenceBoundaryEnabled":"false","wordBoundaryEnabled":"true"},"outputFormat":"audio-24khz-96kbitrate-mono-mp3"}}}}`;
       ws.send(configMessage);
 
-      // 2. Send ssml message
+      // 2. Send SSML message with emotion-aware prosody
       const requestId = uuidv4().replace(/-/g, '').toUpperCase();
-      const ssmlMessage = `X-RequestId:${requestId}\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:${timestamp}Z\r\nPath:ssml\r\n\r\n<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'><voice name='${voice}'><prosody pitch='+0Hz' rate='+0%' volume='+0%'>${escapeXml(text)}</prosody></voice></speak>`;
+      const ssmlMessage = `X-RequestId:${requestId}\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:${timestamp}Z\r\nPath:ssml\r\n\r\n<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'><voice name='${voice}'><prosody pitch='${prosodyPitch}' rate='${prosodyRate}' volume='${prosodyVolume}'>${escapeXml(text)}</prosody></voice></speak>`;
       ws.send(ssmlMessage);
     });
 

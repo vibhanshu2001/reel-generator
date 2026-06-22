@@ -59,29 +59,29 @@ const LAYOUT_CONFIG: Record<LayoutVariant, {
 }> = {
   'text-top': {
     subtitleTop: 110,
-    templatePaddingTop: 340,    // push template below the text block
+    templatePaddingTop: 340,
     templatePaddingBottom: 60,
     templateAlign: 'center',
     gifPosition: 'bottom-right',
   },
   'text-bottom': {
-    subtitleBottom: 420, // Shifted up to avoid bottom UI elements (safe margins)
+    subtitleBottom: 180, // lowered from 420
     templatePaddingTop: 60,
-    templatePaddingBottom: 500, // Push template above the safe zone text block
+    templatePaddingBottom: 320,
     templateAlign: 'center',
     gifPosition: 'top-right',
   },
   'text-mid': {
-    subtitleBottom: 460,
+    subtitleBottom: 200, // lowered from 460
     templatePaddingTop: 48,
     templatePaddingBottom: 0,
-    templateAlign: 'flex-start', // template at top, text floats mid-bottom
+    templateAlign: 'flex-start',
     gifPosition: 'top-left',
   },
   'cinematic': {
-    subtitleBottom: 450, // Shifted up for vertical shorts safe zone
+    subtitleBottom: 160, // lowered from 450 — captions near bottom safe zone
     templatePaddingTop: 40,
-    templatePaddingBottom: 550, // Push template up
+    templatePaddingBottom: 320,
     templateAlign: 'center',
     gifPosition: 'top-right',
   },
@@ -301,7 +301,7 @@ export const Main: React.FC = () => {
               {activeScene.templateData.storyState.speaker}
             </div>
           )}
-          <Subtitles activeScene={activeScene} currentFrame={currentFrame} />
+          <Subtitles activeScene={{ ...activeScene, speaker: activeScene.templateData?.storyState?.speaker }} currentFrame={currentFrame} />
         </div>
       </div>
 

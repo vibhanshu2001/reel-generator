@@ -48,6 +48,8 @@ model Script {
   projectId String   @unique
   project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   title     String
+  youtubeTitle       String?
+  youtubeDescription String?
   hook      String
   body      String
   cta       String
