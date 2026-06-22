@@ -1,0 +1,17 @@
+{
+  "name": "short-generator",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"pnpm dev:backend\" \"pnpm dev:frontend\"",
+    "dev:backend": "pnpm --filter backend dev",
+    "dev:frontend": "pnpm --filter frontend dev",
+    "dev:remotion": "pnpm --filter remotion start",
+    "build:frontend": "pnpm --filter frontend build",
+    "build:remotion": "pnpm --filter remotion build",
+    "start:backend": "pnpm --filter backend start"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

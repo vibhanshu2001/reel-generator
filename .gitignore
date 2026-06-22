@@ -1,0 +1,12 @@
+dist
+.agents
+.DS_Store
+.env
+node_modules
+temp_audio
+package-lock.json
+skills-lock.json
+pnpm-lock.yaml
+build
+outputs
+dev.db

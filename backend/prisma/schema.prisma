@@ -1,0 +1,70 @@
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Series {
+  id            String    @id @default(uuid())
+  name          String
+  characterPair String    @default("byte_bug")
+  universe      String    // We store structured JSON as string for SQLite compatibility
+  createdAt     DateTime  @default(now())
+  projects      Project[]
+}
+
+model Project {
+  id              String   @id @default(uuid())
+  topic           String
+  storyline       String   @default("explainer")
+  characterPair   String   @default("byte_bug")
+  viralPattern    String?
+  seriesId        String?
+  series          Series?  @relation(fields: [seriesId], references: [id], onDelete: SetNull)
+  status          String   // "DRAFT" | "GENERATING_SCRIPT" | "GENERATING_SCENES" | "GENERATING_AUDIO" | "RENDERING" | "COMPLETED" | "FAILED"
+  currentStage    String?  // "research" | "retention" | "script" | "storyboard" | "images" | "audio" | "render" | "completed" | "failed"
+  error           String?
+  videoPath       String?
+  audioPath       String?
+  inputTokens     Int      @default(0)
+  outputTokens    Int      @default(0)
+  generationCost  Float?   @default(0.0)
+  costBreakdown   String?  // We store JSON object string for SQLite
+  retentionScore  Int?
+  retentionPlan   String?  // We store JSON object string for SQLite
+  retentionReport String?  // We store JSON object string for SQLite
+  storyboard      String?  // We store JSON array string for SQLite
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  script          Script?
+  scenes          Scene[]
+}
+
+model Script {
+  id        String   @id @default(uuid())
+  projectId String   @unique
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title     String
+  hook      String
+  body      String
+  cta       String
+  duration  Float
+  score     Int?
+  feedback  String?
+}
+
+model Scene {
+  id             String   @id @default(uuid())
+  projectId      String
+  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sequenceNumber Int
+  text           String
+  template       String   // "architecture-diagram" | "code-card" | "comparison-card" | "terminal-simulation" | "stat-card" | "timeline-card"
+  templateData   String   // JSON string storing dynamic parameters
+  audioPath      String?  // path to the Edge TTS mp3 file
+  duration       Float?   // probed audio length in seconds
+  wordTimings    String?  // JSON string storing [{ word, start, end }]
+}
