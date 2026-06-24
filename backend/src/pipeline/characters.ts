@@ -45,7 +45,7 @@ export const CHARACTER_BIBLE: Record<string, CharacterProfile> = {
       secondary: '#0a192f',
       accent: '#ffd60a'
     },
-    voice: 'en-US-EmmaNeural'
+    voice: 'en-IN-NeerjaNeural'
   },
   Bug: {
     name: 'Bug',
@@ -60,7 +60,7 @@ export const CHARACTER_BIBLE: Record<string, CharacterProfile> = {
       secondary: '#1a0000',
       accent: '#39ff14'
     },
-    voice: 'en-US-AndrewNeural'
+    voice: 'en-IN-PrabhatNeural'
   }
 };
 

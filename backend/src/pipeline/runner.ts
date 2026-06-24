@@ -28,6 +28,9 @@ function calculateGeminiCost(model: string, inputTokens: number, outputTokens: n
  * Executes the Phase 1 Consistent Character Cinematic Engine pipeline.
  */
 export async function runContentPipeline(projectId: string, topic: string, seriesId?: string) {
+  const projectObj = await prisma.project.findUnique({ where: { id: projectId } });
+  const voiceAccent = projectObj?.voiceAccent || 'en-IN';
+
   const provider = process.env.LLM_PROVIDER?.trim().toLowerCase();
   const apiKey = provider === 'openai'
     ? process.env.OPENAI_API_KEY
@@ -175,11 +178,67 @@ export async function runContentPipeline(projectId: string, topic: string, serie
     costBreakdown.storyboard = parseFloat(storyboardCost.toFixed(4));
     totalCost += storyboardCost;
 
+    // Merge the intro title card properties into the first scene of the storyboard
+    if (sceneResult.scenes.length > 0) {
+      const firstScene = sceneResult.scenes[0];
+      
+      const bytePoses = [
+        { emotion: 'excited', action: 'gesturing towards the center', pose: 'pointing with a big smile' },
+        { emotion: 'shocked', action: 'looking at the screen in awe', pose: 'hands on cheeks in amazement' },
+        { emotion: 'excited', action: 'jumping in excitement', pose: 'jumping with arms wide open' }
+      ];
+
+      const bugPoses = [
+        { emotion: 'confident', action: 'pointing to the center', pose: 'leaning forward confidently with a grin' },
+        { emotion: 'dramatic', action: 'revealing the scene', pose: 'pointing dramatically into the camera' },
+        { emotion: 'excited', action: 'welcoming the viewer', pose: 'gesturing with a confident smirk' }
+      ];
+
+      const poseIndex = projectId.split('-').reduce((acc, char) => acc + char.charCodeAt(0), 0) % 3;
+      const bytePose = bytePoses[poseIndex];
+      const bugPose = bugPoses[poseIndex];
+
+      firstScene.templateProps = {
+        ...firstScene.templateProps,
+        isIntro: true,
+        title: scriptResult.youtubeTitle || scriptResult.title
+      };
+
+      // Set environment description for the image generator
+      firstScene.environment = {
+        name: `Intro: ${retentionPlan.visualMetaphor.concept || 'Concept'}`,
+        description: `Vibrant action-packed comic scene set in: ${retentionPlan.visualMetaphor.visualWorld}. High-energy speed lines, clean flat gradients, bold contrast outlines. Byte and Bug are standing in this environment looking excited and energetic, gesturing towards the center of the screen where a big title will be displayed.`
+      };
+
+      // Ensure both Byte and Bug are present in the characters array for the intro visual
+      firstScene.characters = [
+        {
+          name: 'Byte',
+          ...bytePose
+        },
+        {
+          name: 'Bug',
+          ...bugPose
+        }
+      ];
+
+      // Set camera settings for the intro scene
+      firstScene.camera = {
+        shot: 'medium',
+        motion: 'zoom_in'
+      };
+      
+      // Hook scene should always be visual-story template to render the title card background
+      firstScene.template = 'visual-story';
+    }
+
+    const modifiedScenePlannerOutput = sceneResult;
+
     // Save the raw storyboard configuration
     await prisma.project.update({
       where: { id: projectId },
       data: {
-        storyboard: JSON.stringify(sceneResult)
+        storyboard: JSON.stringify(modifiedScenePlannerOutput)
       }
     });
     await updateProjectCost(projectId, totalInputTokens, totalOutputTokens, totalCost, costBreakdown);
@@ -191,7 +250,7 @@ export async function runContentPipeline(projectId: string, topic: string, serie
     let imagesCostAccum = 0.0;
     const resolvedScenes: SceneOutput[] = [];
 
-    for (const scene of sceneResult.scenes) {
+    for (const scene of modifiedScenePlannerOutput.scenes) {
       const storyState = {
         beat: scene.storyBeat,
         speaker: scene.speaker,
@@ -293,7 +352,9 @@ export async function runContentPipeline(projectId: string, topic: string, serie
           templateData: JSON.stringify({
             ...scene.renderState!,
             captionStyle: scene.captionStyle || 'dialogue',
-            storyState: scene.storyState!
+            storyState: scene.storyState!,
+            ...scene.templateProps,
+            stylePack: stylePack.id
           })
         }
       });
@@ -316,9 +377,12 @@ export async function runContentPipeline(projectId: string, topic: string, serie
       const speakerName = sceneData.storyState?.speaker || 'Byte';
       const emotion = (sceneData.characters?.[0]?.emotion || 'neutral').toLowerCase();
 
-      // BUG = male tech expert → AndrewNeural (energetic, confident male voice)
-      // BYTE = curious learner → EmmaNeural (warm, expressive female voice)
-      const voice = speakerName === 'Bug' ? 'en-US-AndrewNeural' : 'en-US-EmmaNeural';
+      // BUG = male tech expert → Prabhat/Andrew
+      // BYTE = curious learner → Neerja/Emma
+      let voice = speakerName === 'Bug' ? 'en-IN-PrabhatNeural' : 'en-IN-NeerjaNeural';
+      if (voiceAccent === 'en-US') {
+        voice = speakerName === 'Bug' ? 'en-US-AndrewNeural' : 'en-US-EmmaNeural';
+      }
 
       // Emotion-aware SSML prosody for expression matching
       // Shocked/excited: faster rate, higher pitch, louder

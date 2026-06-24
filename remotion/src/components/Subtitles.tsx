@@ -43,7 +43,7 @@ export const Subtitles: React.FC<SubtitlesProps> = ({ activeScene, currentFrame 
 
   // --- Fallback: no word timings ---
   if (wordTimings.length === 0) {
-    const cleanText = activeScene.text.replace(/^(Byte|Bug):\s*/i, '');
+    const cleanText = activeScene.text.replace(/^(Byte|Bug):\s*/i, '').replace(/[*_`~]/g, '');
     return (
       <div
         style={{
@@ -107,8 +107,9 @@ export const Subtitles: React.FC<SubtitlesProps> = ({ activeScene, currentFrame 
   const opacity = interpolate(springVal, [0, 0.3], [0, 1], { extrapolateRight: 'clamp' });
 
   // Word importance: ALL-CAPS short words (tech terms) get bigger treatment
-  const isEmphasisWord = /^[A-Z]{2,}$/.test(activeWord.word) ||
-    activeWord.word.length >= 6;
+  const cleanWordText = activeWord.word.replace(/[*_`~]/g, '');
+  const isEmphasisWord = /^[A-Z]{2,}$/.test(cleanWordText) ||
+    cleanWordText.length >= 6;
   const fontSize = captionStyle === 'minimal' ? 72 : isEmphasisWord ? 82 : 74;
 
   return (
@@ -139,7 +140,7 @@ export const Subtitles: React.FC<SubtitlesProps> = ({ activeScene, currentFrame 
           transformOrigin: 'center bottom',
         }}
       >
-        {activeWord.word}
+        {cleanWordText}
       </span>
     </div>
   );

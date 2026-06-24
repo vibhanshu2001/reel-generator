@@ -213,7 +213,7 @@ router.get('/', async (req, res) => {
 
 // 2. Create a new project & kick off pipeline
 router.post('/', async (req, res) => {
-  const { topic, seriesId } = req.body;
+  const { topic, seriesId, voiceAccent } = req.body;
   if (!topic || topic.trim() === '') {
     return res.status(400).json({ error: 'Topic is required.' });
   }
@@ -233,6 +233,7 @@ router.post('/', async (req, res) => {
         topic: topic.trim(),
         seriesId: seriesId || null,
         characterPair,
+        voiceAccent: voiceAccent || 'en-IN',
         status: 'GENERATING_SCRIPT',
         currentStage: 'research'
       },
@@ -452,6 +453,60 @@ router.put('/:id/script', async (req, res) => {
         const plannerStep = await runScenePlanner(scriptResult, apiKey, retentionPlan, stylePack);
         const sceneResult = plannerStep.planner;
 
+        // Merge the intro title card properties into the first scene of the storyboard
+        if (sceneResult.scenes.length > 0) {
+          const firstScene = sceneResult.scenes[0];
+          
+          const bytePoses = [
+            { emotion: 'excited', action: 'gesturing towards the center', pose: 'pointing with a big smile' },
+            { emotion: 'shocked', action: 'looking at the screen in awe', pose: 'hands on cheeks in amazement' },
+            { emotion: 'excited', action: 'jumping in excitement', pose: 'jumping with arms wide open' }
+          ];
+
+          const bugPoses = [
+            { emotion: 'confident', action: 'pointing to the center', pose: 'leaning forward confidently with a grin' },
+            { emotion: 'dramatic', action: 'revealing the scene', pose: 'pointing dramatically into the camera' },
+            { emotion: 'excited', action: 'welcoming the viewer', pose: 'gesturing with a confident smirk' }
+          ];
+
+          const poseIndex = id.split('-').reduce((acc, char) => acc + char.charCodeAt(0), 0) % 3;
+          const bytePose = bytePoses[poseIndex];
+          const bugPose = bugPoses[poseIndex];
+
+          firstScene.templateProps = {
+            ...firstScene.templateProps,
+            isIntro: true,
+            title: scriptResult.youtubeTitle || scriptResult.title
+          };
+
+          // Set environment description for the image generator
+          firstScene.environment = {
+            name: `Intro: ${retentionPlan.visualMetaphor.concept || 'Concept'}`,
+            description: `Vibrant action-packed comic scene set in: ${retentionPlan.visualMetaphor.visualWorld}. High-energy speed lines, clean flat gradients, bold contrast outlines. Byte and Bug are standing in this environment looking excited and energetic, gesturing towards the center of the screen where a big title will be displayed.`
+          };
+
+          // Ensure both Byte and Bug are present in the characters array for the intro visual
+          firstScene.characters = [
+            {
+              name: 'Byte',
+              ...bytePose
+            },
+            {
+              name: 'Bug',
+              ...bugPose
+            }
+          ];
+
+          // Set camera settings for the intro scene
+          firstScene.camera = {
+            shot: 'medium',
+            motion: 'zoom_in'
+          };
+          
+          // Hook scene should always be visual-story template to render the title card background
+          firstScene.template = 'visual-story';
+        }
+
         // Generate Pluggable Visual Scene Assets
         let resolvedScenes: SceneOutput[] = [];
         for (const scene of sceneResult.scenes) {
@@ -534,7 +589,9 @@ router.put('/:id/script', async (req, res) => {
               templateData: JSON.stringify({
                 ...scene.renderState!,
                 captionStyle: scene.captionStyle || 'dialogue',
-                storyState: scene.storyState!
+                storyState: scene.storyState!,
+                ...scene.templateProps,
+                stylePack: stylePack.id
               })
             }
           });
@@ -550,13 +607,20 @@ router.put('/:id/script', async (req, res) => {
           orderBy: { sequenceNumber: 'asc' }
         });
 
+        const projectObj = await prisma.project.findUnique({ where: { id } });
+        const voiceAccent = projectObj?.voiceAccent || 'en-IN';
+
         for (const scene of currentScenes) {
           const audioFilename = `${id}_scene_${scene.sequenceNumber}.mp3`;
           const sceneAudioPath = path.join(tempAudioDir, audioFilename);
           
           const sceneData = JSON.parse(scene.templateData);
           const speakerName = sceneData.storyState?.speaker || 'Byte';
-          const voice = speakerName === 'Bug' ? 'en-US-EmmaNeural' : 'en-US-AndrewNeural';
+          
+          let voice = speakerName === 'Bug' ? 'en-IN-PrabhatNeural' : 'en-IN-NeerjaNeural';
+          if (voiceAccent === 'en-US') {
+            voice = speakerName === 'Bug' ? 'en-US-AndrewNeural' : 'en-US-EmmaNeural';
+          }
 
           // Extract actual dialogue text to prevent voice synthesis from reading character prefix name
           const dialogueText = (sceneData.storyState?.dialogue || scene.text || '').replace(/^(Byte|Bug):\s*/i, '');
@@ -653,6 +717,142 @@ router.post('/:id/render', async (req, res) => {
     })();
 
     res.json({ message: 'Render started in background.' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /:id/accent - Toggle voice accent and regenerate audio files without regenerating scenes
+router.post('/:id/accent', async (req, res) => {
+  const { id } = req.params;
+  const { voiceAccent } = req.body;
+
+  if (!voiceAccent || !['en-IN', 'en-US'].includes(voiceAccent)) {
+    return res.status(400).json({ error: 'Valid voiceAccent is required ("en-IN" or "en-US").' });
+  }
+
+  try {
+    const project = await prisma.project.findUnique({
+      where: { id },
+      include: { scenes: true }
+    });
+
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found.' });
+    }
+
+    // 1. Update project accent and status, set videoPath to null (MP4 is now invalid)
+    await prisma.project.update({
+      where: { id },
+      data: {
+        voiceAccent,
+        status: 'GENERATING_AUDIO',
+        videoPath: null,
+        error: null
+      }
+    });
+    await getAndBroadcastProject(id);
+
+    // Run audio regeneration in background
+    (async () => {
+      try {
+        console.log(`[Project ${id}] Regenerating TTS audio for accent change to ${voiceAccent}...`);
+        
+        // 2. Clean up old scene audio files on disk
+        for (const scene of project.scenes) {
+          if (scene.audioPath && fs.existsSync(scene.audioPath)) {
+            try {
+              fs.unlinkSync(scene.audioPath);
+            } catch (e) {
+              console.error(`Failed to delete scene audio: ${scene.audioPath}`, e);
+            }
+          }
+        }
+
+        // 3. Fetch scenes in order
+        const currentScenes = await prisma.scene.findMany({
+          where: { projectId: id },
+          orderBy: { sequenceNumber: 'asc' }
+        });
+
+        const { generateEdgeTTS } = await import('../pipeline/steps/4_audio_tts.js');
+
+        for (const scene of currentScenes) {
+          const audioFilename = `${id}_scene_${scene.sequenceNumber}.mp3`;
+          const sceneAudioPath = path.join(tempAudioDir, audioFilename);
+          
+          const sceneData = JSON.parse(scene.templateData);
+          const speakerName = sceneData.storyState?.speaker || 'Byte';
+          const emotion = (sceneData.characters?.[0]?.emotion || 'neutral').toLowerCase();
+
+          // Set voice
+          let voice = speakerName === 'Bug' ? 'en-IN-PrabhatNeural' : 'en-IN-NeerjaNeural';
+          if (voiceAccent === 'en-US') {
+            voice = speakerName === 'Bug' ? 'en-US-AndrewNeural' : 'en-US-EmmaNeural';
+          }
+
+          // Emotion-aware SSML prosody for expression matching (mirrors runner.ts)
+          let prosodyRate = '+0%';
+          let prosodyPitch = '+0Hz';
+          let prosodyVolume = '+10%';
+
+          if (speakerName === 'Byte') {
+            if (emotion === 'shocked' || emotion === 'surprised') {
+              prosodyRate = '+18%'; prosodyPitch = '+4Hz'; prosodyVolume = '+15%';
+            } else if (emotion === 'confused') {
+              prosodyRate = '-8%'; prosodyPitch = '+2Hz'; prosodyVolume = '+10%';
+            } else if (emotion === 'excited' || emotion === 'curious') {
+              prosodyRate = '+12%'; prosodyPitch = '+3Hz'; prosodyVolume = '+12%';
+            }
+          } else {
+            if (emotion === 'sarcastic') {
+              prosodyRate = '-10%'; prosodyPitch = '-2Hz'; prosodyVolume = '+10%';
+            } else if (emotion === 'dramatic') {
+              prosodyRate = '-5%'; prosodyPitch = '-1Hz'; prosodyVolume = '+15%';
+            } else if (emotion === 'confident' || emotion === 'explaining') {
+              prosodyRate = '+5%'; prosodyPitch = '+0Hz'; prosodyVolume = '+12%';
+            } else if (emotion === 'excited') {
+              prosodyRate = '+15%'; prosodyPitch = '+2Hz'; prosodyVolume = '+15%';
+            }
+          }
+
+          const dialogueText = (sceneData.storyState?.dialogue || scene.text || '').replace(/^(Byte|Bug):\s*/i, '');
+          console.log(`🎙 [Accent Update TTS] ${speakerName} (${voice} | ${emotion}) Scene ${scene.sequenceNumber}: "${dialogueText.slice(0, 60)}..."`);
+          
+          const ttsResult = await generateEdgeTTS(dialogueText, sceneAudioPath, voice, prosodyRate, prosodyPitch, prosodyVolume);
+
+          await prisma.scene.update({
+            where: { id: scene.id },
+            data: {
+              audioPath: ttsResult.audioPath,
+              duration: ttsResult.duration,
+              wordTimings: JSON.stringify(ttsResult.wordTimings)
+            }
+          });
+        }
+
+        // Update project back to DRAFT and broadcast
+        await prisma.project.update({
+          where: { id },
+          data: { status: 'DRAFT', updatedAt: new Date() }
+        });
+        await getAndBroadcastProject(id);
+        console.log(`[Project ${id}] Audio regeneration complete for accent: ${voiceAccent}.`);
+      } catch (err: any) {
+        console.error(`[Project ${id}] Failed to regenerate audio for accent:`, err);
+        await prisma.project.update({
+          where: { id },
+          data: {
+            status: 'FAILED',
+            error: err.message || 'Failed to regenerate audio for new accent',
+            updatedAt: new Date()
+          }
+        });
+        await getAndBroadcastProject(id);
+      }
+    })();
+
+    res.json({ message: 'Voice accent update and audio regeneration started in background.' });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

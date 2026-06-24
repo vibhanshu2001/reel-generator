@@ -35,6 +35,7 @@ interface Project {
   error: string | null;
   videoPath: string | null;
   audioPath: string | null;
+  voiceAccent?: string;
   createdAt: string;
   updatedAt: string;
   script?: Script | null;
@@ -66,6 +67,7 @@ export default function App() {
   // Series and Story Universe states
   const [seriesList, setSeriesList] = useState<any[]>([]);
   const [selectedSeriesId, setSelectedSeriesId] = useState<string>('');
+  const [selectedVoiceAccent, setSelectedVoiceAccent] = useState<string>('en-IN');
   const [showCreateSeries, setShowCreateSeries] = useState(false);
   const [newSeriesName, setNewSeriesName] = useState('');
   const [newUniverseRules, setNewUniverseRules] = useState('');
@@ -83,6 +85,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [rendering, setRendering] = useState(false);
+  const [changingAccent, setChangingAccent] = useState(false);
 
   // Fetch projects list
   const fetchProjects = async () => {
@@ -202,7 +205,8 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           topic: topicInput,
-          seriesId: selectedSeriesId || undefined
+          seriesId: selectedSeriesId || undefined,
+          voiceAccent: selectedVoiceAccent
         })
       });
       const data = await res.json();
@@ -313,6 +317,31 @@ export default function App() {
       console.error('Failed to retry generation', e);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Toggle voice accent and regenerate audios
+  const handleToggleVoiceAccent = async (newAccent: string) => {
+    if (!selectedProject) return;
+    setChangingAccent(true);
+    try {
+      const res = await fetch(`/api/projects/${selectedProject.id}/accent`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ voiceAccent: newAccent })
+      });
+      if (!res.ok) {
+        const errData = await res.json();
+        alert(errData.error || 'Failed to change voice accent');
+      }
+      fetchProjectDetails(selectedProject.id);
+      fetchProjects();
+    } catch (e) {
+      console.error('Failed to change voice accent', e);
+    } finally {
+      setChangingAccent(false);
     }
   };
 
@@ -593,6 +622,21 @@ export default function App() {
                 ))}
               </select>
 
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+                <span style={{ fontSize: '12px', color: '#8b949e', fontWeight: 700 }}>Voice Accent</span>
+              </div>
+              
+              <select
+                className="glass-input"
+                style={{ fontSize: '14px', padding: '10px 14px', cursor: 'pointer' }}
+                value={selectedVoiceAccent}
+                onChange={(e) => setSelectedVoiceAccent(e.target.value)}
+                disabled={submitting}
+              >
+                <option value="en-IN">Indian English (Prabhat/Neerja)</option>
+                <option value="en-US">US English (Andrew/Emma)</option>
+              </select>
+
               <button type="submit" className="btn-primary" style={{ marginTop: '8px' }} disabled={submitting || !topicInput.trim()}>
                 {submitting ? <Loader2 className="animate-spin" size={18} /> : <Sparkles size={18} />}
                 Generate Story
@@ -734,6 +778,23 @@ export default function App() {
                 )}
               </div>
               <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                {/* Voice Accent Selector */}
+                {['DRAFT', 'COMPLETED', 'FAILED'].includes(selectedProject.status) && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '8px' }}>
+                    <span style={{ fontSize: '12px', color: '#8b949e', fontWeight: 700 }}>Accent:</span>
+                    <select
+                      className="glass-input"
+                      style={{ fontSize: '13px', padding: '6px 12px', cursor: 'pointer', margin: 0, width: 'auto', minWidth: '130px' }}
+                      value={selectedProject.voiceAccent || 'en-IN'}
+                      onChange={(e) => handleToggleVoiceAccent(e.target.value)}
+                      disabled={loading || rendering || changingAccent}
+                    >
+                      <option value="en-IN">Indian English (en-IN)</option>
+                      <option value="en-US">US English (en-US)</option>
+                    </select>
+                  </div>
+                )}
+
                 {selectedProject.status === 'FAILED' && (
                   <button 
                     onClick={handleRetryGeneration} 

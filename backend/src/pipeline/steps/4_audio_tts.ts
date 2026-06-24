@@ -66,12 +66,13 @@ function getJavascriptDateString(): string {
 export function generateEdgeTTS(
   text: string,
   outputPath: string,
-  voice: string = 'en-US-AndrewNeural',
+  voice: string = 'en-IN-PrabhatNeural',
   prosodyRate: string = '+0%',
   prosodyPitch: string = '+0Hz',
   prosodyVolume: string = '+10%'
 ): Promise<AudioTTSResult> {
   return new Promise((resolve, reject) => {
+    const cleanText = text.replace(/[*_`~]/g, '');
     const connectionId = uuidv4().replace(/-/g, '').toUpperCase();
     const token = generateSecMsGecToken();
     const wssUrl = `wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=${TRUSTED_CLIENT_TOKEN}&ConnectionId=${connectionId}&Sec-MS-GEC=${token}&Sec-MS-GEC-Version=${SEC_MS_GEC_VERSION}`;
@@ -99,7 +100,7 @@ export function generateEdgeTTS(
 
       // 2. Send SSML message with emotion-aware prosody
       const requestId = uuidv4().replace(/-/g, '').toUpperCase();
-      const ssmlMessage = `X-RequestId:${requestId}\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:${timestamp}Z\r\nPath:ssml\r\n\r\n<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'><voice name='${voice}'><prosody pitch='${prosodyPitch}' rate='${prosodyRate}' volume='${prosodyVolume}'>${escapeXml(text)}</prosody></voice></speak>`;
+      const ssmlMessage = `X-RequestId:${requestId}\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:${timestamp}Z\r\nPath:ssml\r\n\r\n<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'><voice name='${voice}'><prosody pitch='${prosodyPitch}' rate='${prosodyRate}' volume='${prosodyVolume}'>${escapeXml(cleanText)}</prosody></voice></speak>`;
       ws.send(ssmlMessage);
     });
 
@@ -170,7 +171,7 @@ export function generateEdgeTTS(
         audioDuration = wordTimings[wordTimings.length - 1].end;
       } else {
         // Simple fallback estimate: 130 words per minute
-        const words = text.split(/\s+/).length;
+        const words = cleanText.split(/\s+/).length;
         audioDuration = (words / 130) * 60;
       }
 

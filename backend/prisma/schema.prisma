@@ -21,6 +21,7 @@ model Project {
   topic           String
   storyline       String   @default("explainer")
   characterPair   String   @default("byte_bug")
+  voiceAccent     String   @default("en-IN")
   viralPattern    String?
   seriesId        String?
   series          Series?  @relation(fields: [seriesId], references: [id], onDelete: SetNull)

@@ -137,6 +137,10 @@ export const Main: React.FC = () => {
     (scene) => currentFrame >= scene.startFrame && currentFrame < scene.endFrame
   ) || scenes[scenes.length - 1];
 
+  const isIntroScene = activeScene.templateData?.isIntro === true;
+  const sceneRelativeFrame = currentFrame - activeScene.startFrame;
+  const showSubtitles = !isIntroScene || sceneRelativeFrame >= 45;
+
   const activeEnvironment = activeScene.templateData?.environment;
   const needsContrastBoost =
     (elapsedSeconds >= 8 && elapsedSeconds <= 14) ||
@@ -281,29 +285,31 @@ export const Main: React.FC = () => {
       })}
 
       {/* 5. Subtitles — position driven by layout variant with floating speaker badge */}
-      <div style={subtitleStyle}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '14px', width: '100%' }}>
-          {activeScene.templateData?.storyState?.speaker && activeScene.template !== 'visual-story' && (
-            <div
-              style={{
-                backgroundColor: activeScene.templateData.storyState.speaker === 'Bug' ? '#4ade80' : '#00f2fe',
-                color: '#030307',
-                padding: '6px 20px',
-                borderRadius: '50px',
-                fontSize: '20px',
-                fontWeight: 900,
-                letterSpacing: '1.5px',
-                fontFamily: "'Outfit', sans-serif",
-                textTransform: 'uppercase',
-                boxShadow: `0 6px 20px rgba(0,0,0,0.4), 0 0 15px ${activeScene.templateData.storyState.speaker === 'Bug' ? 'rgba(74,222,128,0.3)' : 'rgba(0,242,254,0.3)'}`
-              }}
-            >
-              {activeScene.templateData.storyState.speaker}
-            </div>
-          )}
-          <Subtitles activeScene={{ ...activeScene, speaker: activeScene.templateData?.storyState?.speaker }} currentFrame={currentFrame} />
+      {showSubtitles && (
+        <div style={subtitleStyle}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '14px', width: '100%' }}>
+            {activeScene.templateData?.storyState?.speaker && activeScene.template !== 'visual-story' && (
+              <div
+                style={{
+                  backgroundColor: activeScene.templateData.storyState.speaker === 'Bug' ? '#4ade80' : '#00f2fe',
+                  color: '#030307',
+                  padding: '6px 20px',
+                  borderRadius: '50px',
+                  fontSize: '20px',
+                  fontWeight: 900,
+                  letterSpacing: '1.5px',
+                  fontFamily: "'Outfit', sans-serif",
+                  textTransform: 'uppercase',
+                  boxShadow: `0 6px 20px rgba(0,0,0,0.4), 0 0 15px ${activeScene.templateData.storyState.speaker === 'Bug' ? 'rgba(74,222,128,0.3)' : 'rgba(0,242,254,0.3)'}`
+                }}
+              >
+                {activeScene.templateData.storyState.speaker}
+              </div>
+            )}
+            <Subtitles activeScene={{ ...activeScene, speaker: activeScene.templateData?.storyState?.speaker }} currentFrame={currentFrame} />
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Cinematic Fade Out at the end of the video */}
       {totalDurationInFrames && currentFrame >= totalDurationInFrames - 45 && (

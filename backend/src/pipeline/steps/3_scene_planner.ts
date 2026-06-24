@@ -38,6 +38,8 @@ export interface SceneOutput {
     leftItems?: string[];
     rightTitle?: string;
     rightItems?: string[];
+    isIntro?: boolean;
+    title?: string;
   };
   storyState?: {
     beat: string;
@@ -89,7 +91,7 @@ export const scenePlannerSchema: any = {
             type: 'object',
             properties: {
               name: { type: 'string', description: "Environment name matching the visual metaphor." },
-              description: { type: 'string', description: "Visual description of the environment occupying 80-90% of the screen. Must describe comic animation style: strong outlines, vibrant flat gradients, speed lines, impact frames, halftone textures. No Pixar 3D." }
+              description: { type: 'string', description: "Visual description of the environment occupying 80-90% of the screen. Must describe comic animation style: strong outlines, vibrant flat gradients, speed lines. No Pixar 3D. Keep it very concise (max 15-20 words)." }
             },
             required: ["name", "description"]
           },
@@ -100,8 +102,8 @@ export const scenePlannerSchema: any = {
               properties: {
                 name: { type: 'string', enum: ['Byte', 'Bug'] },
                 emotion: { type: 'string', enum: ['shocked', 'confused', 'curious', 'explaining', 'confident', 'sarcastic', 'dramatic', 'excited'], description: "Byte uses: shocked/confused/curious/excited. Bug uses: explaining/confident/sarcastic/dramatic." },
-                action: { type: 'string', description: "Physical action the character is performing." },
-                pose: { type: 'string', description: "Specific comic pose descriptor for dynamic body language. Examples: 'jumping with arms wide open', 'pointing dramatically with finger gun', 'head tilted to the side confused', 'leaning forward with confident grin', 'hands on head in shock', 'running with motion streaks', 'crashing through a wall'." }
+                action: { type: 'string', description: "Physical action the character is performing. Keep it very concise (max 5-8 words)." },
+                pose: { type: 'string', description: "Specific comic pose descriptor for dynamic body language. Examples: 'pointing dramatically', 'hands on head in shock', 'leaning forward confidently with grin'. Keep it very concise (max 5-8 words)." }
               },
               required: ["name", "emotion", "action", "pose"]
             }
