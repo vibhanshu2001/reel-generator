@@ -12,6 +12,7 @@ import { TerminalSimulation } from './templates/TerminalSimulation';
 import { StatCard } from './templates/StatCard';
 import { TimelineCard } from './templates/TimelineCard';
 import { VisualStory } from './templates/VisualStory';
+import { InformativeCard } from './templates/InformativeCard';
 
 // Load fonts globally
 loadFont();
@@ -20,7 +21,7 @@ loadMono();
 export interface Scene {
   id: number;
   text: string;
-  template: 'architecture-diagram' | 'code-card' | 'comparison-card' | 'terminal-simulation' | 'stat-card' | 'timeline-card' | 'visual-story';
+  template: 'architecture-diagram' | 'code-card' | 'comparison-card' | 'terminal-simulation' | 'stat-card' | 'timeline-card' | 'visual-story' | 'informative-card';
   templateData: any & {
     environment?: 'neon' | 'terminal' | 'architecture' | 'benchmark' | 'editor' | 'counter';
     stylePack?: 'terminal' | 'cyberpunk' | 'infographic' | 'minimal';
@@ -109,6 +110,7 @@ function deriveLayout(scene: Scene, totalScenes: number): LayoutVariant {
 
   switch (scene.template) {
     case 'visual-story':      return 'cinematic';
+    case 'informative-card':  return 'cinematic';
     case 'stat-card':         return 'text-bottom';
     case 'architecture-diagram': return 'text-top';
     case 'code-card':         return 'cinematic';
@@ -139,7 +141,7 @@ export const Main: React.FC = () => {
 
   const isIntroScene = activeScene.templateData?.isIntro === true;
   const sceneRelativeFrame = currentFrame - activeScene.startFrame;
-  const showSubtitles = !isIntroScene || sceneRelativeFrame >= 45;
+  const showSubtitles = activeScene.template !== 'informative-card' && (!isIntroScene || sceneRelativeFrame >= 45);
 
   const activeEnvironment = activeScene.templateData?.environment;
   const needsContrastBoost =
@@ -164,6 +166,8 @@ export const Main: React.FC = () => {
     switch (scene.template) {
       case 'visual-story':
         return <VisualStory data={scene.templateData} durationFrames={durationFrames} frame={sceneRelativeFrame} />;
+      case 'informative-card':
+        return <InformativeCard data={scene.templateData} durationFrames={durationFrames} frame={sceneRelativeFrame} />;
       case 'code-card':
         return <CodeCard data={scene.templateData} durationFrames={durationFrames} frame={sceneRelativeFrame} />;
       case 'architecture-diagram':
@@ -197,9 +201,15 @@ export const Main: React.FC = () => {
 
   return (
     <div style={{ flex: 1, backgroundColor: '#050508', position: 'relative', width: 1080, height: 1920, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-      {/* 1. Background / Visual Story (full-screen) */}
+      {/* 1. Background / Visual Story / Informative Card (full-screen) */}
       {activeScene.template === 'visual-story' ? (
         <VisualStory
+          data={activeScene.templateData}
+          durationFrames={activeScene.endFrame - activeScene.startFrame}
+          frame={currentFrame - activeScene.startFrame}
+        />
+      ) : activeScene.template === 'informative-card' ? (
+        <InformativeCard
           data={activeScene.templateData}
           durationFrames={activeScene.endFrame - activeScene.startFrame}
           frame={currentFrame - activeScene.startFrame}
@@ -257,7 +267,7 @@ export const Main: React.FC = () => {
         {scenes.map((scene) => {
           const isVisible = currentFrame >= scene.startFrame && currentFrame < scene.endFrame;
           if (!isVisible) return null;
-          if (scene.template === 'visual-story') return null;
+          if (scene.template === 'visual-story' || scene.template === 'informative-card') return null;
           return (
             <div key={scene.id} style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
               {renderTemplate(scene)}

@@ -31,6 +31,32 @@ function formatProjectForResponse(project: any) {
   };
 }
 
+async function autoGenerateInformativeTopic(apiKey: string): Promise<string> {
+  const { generateContentWithRetry } = await import('../pipeline/gemini.js');
+  const prompt = `Generate a single, highly intriguing, curiosity-driven, general-interest (non-technical) topic for an informative reel.
+It should be a fascinating question about science, history, daily life, nature, or space.
+Examples: "Why do airplane windows have a tiny hole?", "Why does the vaccine leave a scar on our arms?", "Why do cats purr?".
+Return ONLY the topic text, nothing else. Do not use quotes or markdown.`;
+
+  try {
+    const result = await generateContentWithRetry(apiKey, 'gemini-2.5-flash', prompt);
+    return result.text.trim().replace(/^["']|["']$/g, '');
+  } catch (err) {
+    console.error('[AutoGenerateTopic] Failed:', err);
+    // Return a default interesting topic as backup
+    const backups = [
+      "Why do airplane windows have tiny holes?",
+      "Why do mirrors invert left-to-right but not up-to-down?",
+      "Why did childhood vaccines leave circular marks?",
+      "Why do cats purr?",
+      "What actually happens to our brain when we sleep?",
+      "Why is the ocean blue?"
+    ];
+    return backups[Math.floor(Math.random() * backups.length)];
+  }
+}
+
+
 // Helper to fetch full project details and broadcast it to listeners
 async function getAndBroadcastProject(id: string) {
   const project = await prisma.project.findUnique({
@@ -135,7 +161,7 @@ router.post('/series', async (req, res) => {
   }
 });
 
-// Suggest Topics — calls Gemini to generate high-retention Byte & Bug topic ideas
+// Suggest Topics — calls Gemini/LLM to generate topic ideas based on type (byte_bug or informative)
 router.get('/suggest-topics', async (req, res) => {
   const apiKey = process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY || process.env.DEEPSEEK_API_KEY;
   if (!apiKey) {
@@ -143,29 +169,63 @@ router.get('/suggest-topics', async (req, res) => {
   }
 
   const { generateContentWithRetry } = await import('../pipeline/gemini.js');
+  const type = req.query.type || 'byte_bug';
 
-  const schema: any = {
-    type: 'object',
-    properties: {
-      topics: {
-        type: 'array',
-        items: {
-          type: 'object',
-          properties: {
-            topic:       { type: 'string', description: 'Short topic title, e.g. "How Kafka Actually Works"' },
-            hook:        { type: 'string', description: 'The 1-line hook Byte or Bug would say to open the video. Max 12 words.' },
-            category:    { type: 'string', enum: ['networking', 'databases', 'distributed-systems', 'cloud', 'ai-ml', 'devops', 'security', 'web', 'os', 'algorithms'] },
-            viralPattern:{ type: 'string', enum: ['myth_busting', 'hidden_truth', 'battle', 'race', 'countdown', 'unexpected_twist', 'survival_story', 'mystery_box'] },
-            retentionScore: { type: 'number', description: 'Predicted 15-second retention % (0-100)' }
-          },
-          required: ['topic', 'hook', 'category', 'viralPattern', 'retentionScore']
-        }
+  const schema: any = type === 'informative'
+    ? {
+        type: 'object',
+        properties: {
+          topics: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                topic:       { type: 'string', description: 'Intriguing, curiosity-driven topic. E.g. "Why do airplane windows have a tiny hole?" or "The mystery of the vaccine marks"' },
+                hook:        { type: 'string', description: 'The hook question/statement that will display at the top of the video. E.g. "Why is there a tiny hole in airplane windows?"' },
+                category:    { type: 'string', enum: ['history', 'science', 'nature', 'space', 'health', 'daily-life', 'earth', 'technology'] },
+                viralPattern:{ type: 'string', enum: ['hidden_truth', 'unexpected_twist', 'mystery_box', 'myth_busting'] },
+                retentionScore: { type: 'number', description: 'Predicted 15-second retention % (0-100)' }
+              },
+              required: ['topic', 'hook', 'category', 'viralPattern', 'retentionScore']
+            }
+          }
+        },
+        required: ['topics']
       }
-    },
-    required: ['topics']
-  };
+    : {
+        type: 'object',
+        properties: {
+          topics: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                topic:       { type: 'string', description: 'Short topic title, e.g. "How Kafka Actually Works"' },
+                hook:        { type: 'string', description: 'The 1-line hook Byte or Bug would say to open the video. Max 12 words.' },
+                category:    { type: 'string', enum: ['networking', 'databases', 'distributed-systems', 'cloud', 'ai-ml', 'devops', 'security', 'web', 'os', 'algorithms'] },
+                viralPattern:{ type: 'string', enum: ['myth_busting', 'hidden_truth', 'battle', 'race', 'countdown', 'unexpected_twist', 'survival_story', 'mystery_box'] },
+                retentionScore: { type: 'number', description: 'Predicted 15-second retention % (0-100)' }
+              },
+              required: ['topic', 'hook', 'category', 'viralPattern', 'retentionScore']
+            }
+          }
+        },
+        required: ['topics']
+      };
 
-  const prompt = `You are the creative director for the "Byte & Bug" developer Shorts channel.
+  const prompt = type === 'informative'
+    ? `You are the creative director for an "Informative Spotlight" Shorts channel.
+Generate exactly 6 HIGH-RETENTION, general-interest short video topic ideas (curiosity-driven, non-technical).
+
+Each topic must:
+1. Appeal to a broad audience (not technical or developer-specific). Think general science, historical trivia, daily life mysteries, or nature anomalies.
+2. Have a highly intriguing hook question/statement that makes a user stop scrolling immediately (max 15 words).
+3. Map to a clear viral pattern (myth busting, hidden truth, unexpected twist, mystery box).
+4. Be concrete and interesting (e.g., "Why mirrors invert horizontally but not vertically", "Why do airplane windows have tiny holes?", "Why did vaccines we got as kids leave marks?").
+5. Feel like it could go viral on TikTok or Instagram Reels.
+
+Return strictly as JSON matching the schema. Vary the categories.`
+    : `You are the creative director for the "Byte & Bug" developer Shorts channel.
 Byte (blue hoodie, confused learner) and Bug (red hoodie, sarcastic expert) explore tech concepts together in chaotic comic adventures.
 
 Generate exactly 6 HIGH-RETENTION short video topic ideas for software developers aged 22-35.
@@ -213,19 +273,69 @@ router.get('/', async (req, res) => {
 
 // 2. Create a new project & kick off pipeline
 router.post('/', async (req, res) => {
-  const { topic, seriesId, voiceAccent } = req.body;
-  if (!topic || topic.trim() === '') {
-    return res.status(400).json({ error: 'Topic is required.' });
+  let { topic, seriesId, voiceAccent, characterPair: reqCharacterPair, backgroundMusic } = req.body;
+
+  // Resolve character pair and series details
+  let characterPair = reqCharacterPair || 'byte_bug';
+  let storyline = 'explainer';
+
+  if (seriesId) {
+    const seriesObj = await prisma.series.findUnique({ where: { id: seriesId } });
+    if (seriesObj) {
+      characterPair = seriesObj.characterPair;
+      if (characterPair === 'informative') {
+        try {
+          const univ = JSON.parse(seriesObj.universe);
+          storyline = univ.backgroundMusic || 'lacrimosa';
+        } catch {
+          storyline = 'lacrimosa';
+        }
+      }
+    }
+  }
+
+  if (characterPair === 'informative' && backgroundMusic) {
+    storyline = backgroundMusic;
+  }
+
+  // Handle AUTO_CHOOSE or missing topic for informative style
+  const isAutoChoose = !topic || topic.trim() === '' || topic.trim() === 'AUTO_CHOOSE';
+  if (isAutoChoose) {
+    if (characterPair === 'informative') {
+      const apiKey = process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY || process.env.DEEPSEEK_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({ error: 'No LLM API key configured for auto-choosing topic.' });
+      }
+      console.log('🤖 Auto-choosing topic for informative reel...');
+      topic = await autoGenerateInformativeTopic(apiKey);
+      console.log(`🤖 Auto-chosen topic: "${topic}"`);
+    } else {
+      return res.status(400).json({ error: 'Topic is required for Byte & Bug explainer reels.' });
+    }
   }
 
   try {
     // Resolve character pair and series details
-    let characterPair = 'byte_bug';
+    let characterPair = reqCharacterPair || 'byte_bug';
+    let storyline = 'explainer';
+
     if (seriesId) {
       const seriesObj = await prisma.series.findUnique({ where: { id: seriesId } });
       if (seriesObj) {
         characterPair = seriesObj.characterPair;
+        if (characterPair === 'informative') {
+          try {
+            const univ = JSON.parse(seriesObj.universe);
+            storyline = univ.backgroundMusic || 'lacrimosa';
+          } catch {
+            storyline = 'lacrimosa';
+          }
+        }
       }
+    }
+
+    if (characterPair === 'informative' && backgroundMusic) {
+      storyline = backgroundMusic;
     }
 
     const project = await prisma.project.create({
@@ -233,6 +343,7 @@ router.post('/', async (req, res) => {
         topic: topic.trim(),
         seriesId: seriesId || null,
         characterPair,
+        storyline,
         voiceAccent: voiceAccent || 'en-IN',
         status: 'GENERATING_SCRIPT',
         currentStage: 'research'

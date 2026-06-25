@@ -41,6 +41,7 @@ interface Project {
   script?: Script | null;
   scenes?: Scene[];
   storyline?: string;
+  characterPair?: string;
   viralPattern?: string | null;
   retentionScore?: number | null;
   retentionPlan?: any | null;
@@ -71,6 +72,27 @@ export default function App() {
   const [showCreateSeries, setShowCreateSeries] = useState(false);
   const [newSeriesName, setNewSeriesName] = useState('');
   const [newUniverseRules, setNewUniverseRules] = useState('');
+  const [selectedCharacterPair, setSelectedCharacterPair] = useState<string>('byte_bug');
+  const [selectedBackgroundMusic, setSelectedBackgroundMusic] = useState<string>('lacrimosa');
+  const [newSeriesType, setNewSeriesType] = useState<string>('byte_bug');
+  const [newSeriesMusic, setNewSeriesMusic] = useState<string>('lacrimosa');
+
+  useEffect(() => {
+    if (selectedSeriesId) {
+      const seriesObj = seriesList.find(s => s.id === selectedSeriesId);
+      if (seriesObj) {
+        setSelectedCharacterPair(seriesObj.characterPair || 'byte_bug');
+        if (seriesObj.characterPair === 'informative') {
+          try {
+            const univ = typeof seriesObj.universe === 'string' ? JSON.parse(seriesObj.universe) : seriesObj.universe;
+            setSelectedBackgroundMusic(univ?.backgroundMusic || 'lacrimosa');
+          } catch {
+            setSelectedBackgroundMusic('lacrimosa');
+          }
+        }
+      }
+    }
+  }, [selectedSeriesId, seriesList]);
 
   // Script editor states
   const [isEditing, setIsEditing] = useState(false);
@@ -182,7 +204,7 @@ export default function App() {
     setSuggestError('');
     setSuggestedTopics([]);
     try {
-      const res = await fetch('/api/projects/suggest-topics');
+      const res = await fetch(`/api/projects/suggest-topics?type=${selectedCharacterPair}`);
       if (!res.ok) throw new Error('Failed to fetch suggestions');
       const data = await res.json();
       setSuggestedTopics(data);
@@ -196,7 +218,8 @@ export default function App() {
   // Handle new project submission
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!topicInput.trim()) return;
+    const finalTopic = topicInput.trim() || (selectedCharacterPair === 'informative' ? 'AUTO_CHOOSE' : '');
+    if (!finalTopic) return;
 
     setSubmitting(true);
     try {
@@ -204,9 +227,11 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          topic: topicInput,
+          topic: finalTopic,
           seriesId: selectedSeriesId || undefined,
-          voiceAccent: selectedVoiceAccent
+          voiceAccent: selectedVoiceAccent,
+          characterPair: selectedCharacterPair,
+          backgroundMusic: selectedCharacterPair === 'informative' ? selectedBackgroundMusic : undefined
         })
       });
       const data = await res.json();
@@ -233,15 +258,25 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: newSeriesName.trim(),
-          universe: {
-            name: `${newSeriesName} Universe`,
-            premise: `Byte and Bug explore ${newSeriesName}.`,
-            characters: ['Byte', 'Bug'],
-            rules: newUniverseRules.split('\n').map(r => r.trim()).filter(Boolean),
-            visualStyle: 'technical_2d_comic_animation',
-            visualStyleDetails: 'Developer-focused technical comic aesthetic with architecture diagrams, terminal surfaces, APIs, queues, databases, servers, data packets, and clean comic motion.',
-            continuityLevel: 'light'
-          }
+          characterPair: newSeriesType,
+          universe: newSeriesType === 'informative' 
+            ? {
+                name: `${newSeriesName} Universe`,
+                premise: `Informative Spotlight series about ${newSeriesName}.`,
+                characters: [],
+                rules: newUniverseRules.split('\n').map(r => r.trim()).filter(Boolean),
+                visualStyle: 'informative_card',
+                backgroundMusic: newSeriesMusic
+              }
+            : {
+                name: `${newSeriesName} Universe`,
+                premise: `Byte and Bug explore ${newSeriesName}.`,
+                characters: ['Byte', 'Bug'],
+                rules: newUniverseRules.split('\n').map(r => r.trim()).filter(Boolean),
+                visualStyle: 'technical_2d_comic_animation',
+                visualStyleDetails: 'Developer-focused technical comic aesthetic with architecture diagrams, terminal surfaces, APIs, queues, databases, servers, data packets, and clean comic motion.',
+                continuityLevel: 'light'
+              }
         })
       });
       const data = await res.json();
@@ -361,24 +396,27 @@ export default function App() {
     }
   };
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (project: Project) => {
+    const status = project.status;
+    const isInformative = project.characterPair === 'informative';
+
     switch (status) {
       case 'GENERATING_SCRIPT':
         return (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', backgroundColor: 'rgba(251, 191, 36, 0.15)', border: '1px solid rgba(251, 191, 36, 0.3)', color: '#fbbf24', padding: '4px 10px', borderRadius: '50px', fontSize: '12px', fontWeight: 700 }}>
-            <Loader2 size={12} className="animate-spin" /> 🔍 Researching & Scripting
+            <Loader2 size={12} className="animate-spin" /> {isInformative ? '🔍 Writing Caption' : '🔍 Researching & Scripting'}
           </span>
         );
       case 'GENERATING_SCENES':
         return (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', backgroundColor: 'rgba(168, 85, 247, 0.15)', border: '1px solid rgba(168, 85, 247, 0.3)', color: '#c084fc', padding: '4px 10px', borderRadius: '50px', fontSize: '12px', fontWeight: 700 }}>
-            <Loader2 size={12} className="animate-spin" /> 🎬 Structuring Storyboard
+            <Loader2 size={12} className="animate-spin" /> {isInformative ? '🖼 Finding Image' : '🎬 Structuring Storyboard'}
           </span>
         );
       case 'GENERATING_AUDIO':
         return (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', backgroundColor: 'rgba(59, 130, 246, 0.15)', border: '1px solid rgba(59, 130, 246, 0.3)', color: '#60a5fa', padding: '4px 10px', borderRadius: '50px', fontSize: '12px', fontWeight: 700 }}>
-            <Loader2 size={12} className="animate-spin" /> 🗣 Synthesizing Voiceover
+            <Loader2 size={12} className="animate-spin" /> {isInformative ? '🎵 Downloading Music' : '🗣 Synthesizing Voiceover'}
           </span>
         );
       case 'SCORING':
@@ -485,7 +523,7 @@ export default function App() {
               <input
                 type="text"
                 className="glass-input"
-                placeholder="e.g. Why Kafka is NOT a queue..."
+                placeholder={selectedCharacterPair === 'informative' ? "e.g. Vaccine marks (or leave blank to auto-choose...)" : "e.g. Why Kafka is NOT a queue..."}
                 value={topicInput}
                 onChange={(e) => setTopicInput(e.target.value)}
                 disabled={submitting}
@@ -622,22 +660,62 @@ export default function App() {
                 ))}
               </select>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
-                <span style={{ fontSize: '12px', color: '#8b949e', fontWeight: 700 }}>Voice Accent</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>
+                <span style={{ fontSize: '12px', color: '#8b949e', fontWeight: 700 }}>Reel Type</span>
+                <select
+                  className="glass-input"
+                  style={{ fontSize: '14px', padding: '10px 14px', cursor: 'pointer' }}
+                  value={selectedCharacterPair}
+                  onChange={(e) => setSelectedCharacterPair(e.target.value)}
+                  disabled={submitting || !!selectedSeriesId}
+                >
+                  <option value="byte_bug">Byte & Bug Comic Explainer</option>
+                  <option value="informative">Informative Spotlight (Image + Music)</option>
+                </select>
               </div>
-              
-              <select
-                className="glass-input"
-                style={{ fontSize: '14px', padding: '10px 14px', cursor: 'pointer' }}
-                value={selectedVoiceAccent}
-                onChange={(e) => setSelectedVoiceAccent(e.target.value)}
-                disabled={submitting}
-              >
-                <option value="en-IN">Indian English (Prabhat/Neerja)</option>
-                <option value="en-US">US English (Andrew/Emma)</option>
-              </select>
 
-              <button type="submit" className="btn-primary" style={{ marginTop: '8px' }} disabled={submitting || !topicInput.trim()}>
+              {selectedCharacterPair === 'informative' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>
+                  <span style={{ fontSize: '12px', color: '#8b949e', fontWeight: 700 }}>Background Music</span>
+                  <select
+                    className="glass-input"
+                    style={{ fontSize: '14px', padding: '10px 14px', cursor: 'pointer' }}
+                    value={selectedBackgroundMusic}
+                    onChange={(e) => setSelectedBackgroundMusic(e.target.value)}
+                    disabled={submitting || (!!selectedSeriesId && seriesList.find(s => s.id === selectedSeriesId)?.characterPair === 'informative')}
+                  >
+                    <option value="lacrimosa">Mozart - Lacrimosa (Dramatic)</option>
+                    <option value="lofi">Ambient Lo-Fi (Chill)</option>
+                    <option value="synthwave">Retro Synthwave (Dreamy)</option>
+                    <option value="cinematic">Cinematic Ambient (Spark)</option>
+                  </select>
+                </div>
+              )}
+
+              {selectedCharacterPair !== 'informative' && (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+                    <span style={{ fontSize: '12px', color: '#8b949e', fontWeight: 700 }}>Voice Accent</span>
+                  </div>
+                  <select
+                    className="glass-input"
+                    style={{ fontSize: '14px', padding: '10px 14px', cursor: 'pointer' }}
+                    value={selectedVoiceAccent}
+                    onChange={(e) => setSelectedVoiceAccent(e.target.value)}
+                    disabled={submitting}
+                  >
+                    <option value="en-IN">Indian English (Prabhat/Neerja)</option>
+                    <option value="en-US">US English (Andrew/Emma)</option>
+                  </select>
+                </>
+              )}
+
+              <button 
+                type="submit" 
+                className="btn-primary" 
+                style={{ marginTop: '8px' }} 
+                disabled={submitting || (selectedCharacterPair === 'byte_bug' && !topicInput.trim())}
+              >
                 {submitting ? <Loader2 className="animate-spin" size={18} /> : <Sparkles size={18} />}
                 Generate Story
               </button>
@@ -658,6 +736,36 @@ export default function App() {
                   required
                 />
               </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <label style={{ fontSize: '11px', color: '#8b949e', fontWeight: 700 }}>Series Type</label>
+                <select
+                  className="glass-input"
+                  style={{ padding: '8px 12px', fontSize: '13px', cursor: 'pointer' }}
+                  value={newSeriesType}
+                  onChange={(e) => setNewSeriesType(e.target.value)}
+                >
+                  <option value="byte_bug">Byte & Bug Comic Explainer</option>
+                  <option value="informative">Informative Spotlight</option>
+                </select>
+              </div>
+
+              {newSeriesType === 'informative' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ fontSize: '11px', color: '#8b949e', fontWeight: 700 }}>Series Default Music</label>
+                  <select
+                    className="glass-input"
+                    style={{ padding: '8px 12px', fontSize: '13px', cursor: 'pointer' }}
+                    value={newSeriesMusic}
+                    onChange={(e) => setNewSeriesMusic(e.target.value)}
+                  >
+                    <option value="lacrimosa">Mozart - Lacrimosa (Dramatic)</option>
+                    <option value="lofi">Ambient Lo-Fi (Chill)</option>
+                    <option value="synthwave">Retro Synthwave (Dreamy)</option>
+                    <option value="cinematic">Cinematic Ambient (Spark)</option>
+                  </select>
+                </div>
+              )}
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 <label style={{ fontSize: '11px', color: '#8b949e', fontWeight: 700 }}>Universe Rules (one per line)</label>
@@ -747,7 +855,7 @@ export default function App() {
                     </button>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
-                    {getStatusBadge(project.status)}
+                    {getStatusBadge(project)}
                     <span style={{ fontSize: '11px', color: '#8b949e' }}>
                       {new Date(project.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                     </span>
@@ -816,7 +924,7 @@ export default function App() {
                     <RefreshCw size={16} /> Re-Render Video
                   </button>
                 )}
-                {getStatusBadge(selectedProject.status)}
+                {getStatusBadge(selectedProject)}
               </div>
             </div>
 
@@ -1021,7 +1129,7 @@ export default function App() {
                         )}
                       </div>
                       <div>
-                        <label style={{ fontSize: '12px', color: '#00f2fe', fontWeight: 700, textTransform: 'uppercase' }}>YouTube Description</label>
+                        <label style={{ fontSize: '12px', color: '#00f2fe', fontWeight: 700, textTransform: 'uppercase' }}>{selectedProject.characterPair === 'informative' ? 'Post Caption / Explanation' : 'YouTube Description'}</label>
                         {isEditing ? (
                           <textarea rows={4} className="glass-input" style={{ width: '100%', marginTop: '6px', padding: '10px', fontSize: '14px', fontFamily: 'inherit' }} value={editYoutubeDescription} onChange={e => setEditYoutubeDescription(e.target.value)} />
                         ) : (
@@ -1169,7 +1277,7 @@ export default function App() {
                                   fontWeight: 700
                                 }}
                               >
-                                <Music size={12} /> Play Voice
+                                <Music size={12} /> {selectedProject.characterPair === 'informative' ? 'Play Music' : 'Play Voice'}
                               </button>
                             )}
                           </div>

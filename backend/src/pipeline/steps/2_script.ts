@@ -156,3 +156,65 @@ Return the result as a strict JSON structure matching the schema.`;
     throw err;
   }
 }
+
+export const informativeScriptSchema: any = {
+  type: 'object',
+  properties: {
+    title: { type: 'string', description: "Internal working title for the informative post." },
+    youtubeTitle: { type: 'string', description: "Final title for the post. Under 70 characters, catchy, viral-optimized, no clickbait." },
+    youtubeDescription: { type: 'string', description: "Detailed informative post caption. Should be 100-150 words of rich, engaging, complete explanations of the topic, broken down into readable paragraphs. End with 4-6 viral hashtags." },
+    hook: { type: 'string', description: "The hook question/statement that will display at the top of the video. E.g. 'Why did childhood vaccines leave circular marks?' Max 15 words." },
+    info: { type: 'string', description: "A very short, punchy answer/summary (1-2 sentences, max 20 words) to overlay at the bottom of the video. E.g. 'The scars are remnants of live vaccines like Smallpox or BCG administered under the skin.'" },
+    imageSearchQuery: { type: 'string', description: "An optimized search term to find a relevant picture on Google Images. E.g. 'BCG vaccine scar arm close up'. Keep it concrete." },
+    cta: { type: 'string', description: "Final closing call to action to show at the bottom or end of video. Max 6 words." },
+    duration: { type: 'number', description: "Reel duration in seconds. Must be exactly 30." }
+  },
+  required: ["title", "youtubeTitle", "youtubeDescription", "hook", "info", "imageSearchQuery", "cta", "duration"]
+};
+
+export async function runInformativeScriptGenerator(
+  topic: string,
+  researchData: string,
+  apiKey: string
+): Promise<{ script: any; inputTokens: number; outputTokens: number }> {
+  if (!apiKey) {
+    throw new Error('API key is not configured.');
+  }
+
+  const prompt = `You are an expert content creator specializing in educational and viral social media reels (Instagram Reels, TikTok, YouTube Shorts).
+Your goal is to write the copy for an informative "Spotlight" reel.
+
+This format consists of:
+1. A visual hook question/statement displayed at the top of the video.
+2. A single high-quality image displayed in the center.
+3. A very short, punchy summary answer (max 20 words) to overlay at the bottom of the video.
+4. A detailed, highly engaging caption (100-150 words) that provides the full explanation, answering the hook question completely.
+
+Topic: "${topic}"
+
+RESEARCH CONTEXT:
+${researchData}
+
+Instructions:
+1. Create a compelling hook question/statement. It should be intriguing and make users want to stop scrolling (e.g. "Why did vaccines we got as kids leave circular marks like this?"). Max 15 words.
+2. Create a very short, punchy summary answer (max 20 words) to display as overlay text at the bottom of the video, answering the hook question briefly (e.g. "The scars are remnants of live vaccines administered intradermally.").
+3. Write a detailed explanation caption (100-150 words). Break it down into 2-3 readable short paragraphs. Make it simple, clear, and highly informative. Add 4-6 viral tags at the end (e.g. #vaccine #medicalhistory #learnontiktok).
+4. Generate a concrete search term for Google Images (e.g. "BCG vaccine scar on shoulder close up") that represents the visual topic. Do not include abstract terms, make it direct and searchable.
+5. Set duration exactly to 30.
+
+Return the result as a strict JSON structure matching the schema.`;
+
+  const response = await generateContentWithRetry(apiKey, 'gemini-2.5-flash', prompt, informativeScriptSchema);
+
+  try {
+    const script = JSON.parse(response.text);
+    return {
+      script,
+      inputTokens: response.inputTokens,
+      outputTokens: response.outputTokens
+    };
+  } catch (err) {
+    console.error('Failed to parse informative script JSON:', response.text);
+    throw err;
+  }
+}
